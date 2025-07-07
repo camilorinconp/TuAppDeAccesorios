@@ -1,0 +1,83 @@
+[flake8]
+# Configuración de flake8 para TuAppDeAccesorios backend
+
+# Longitud máxima de línea (compatible con Black)
+max-line-length = 88
+
+# Complejidad ciclomática máxima
+max-complexity = 10
+
+# Códigos de error/warning a ignorar
+extend-ignore = 
+    # E203: whitespace before ':' (incompatible con Black)
+    E203,
+    # W503: line break before binary operator (incompatible con Black)
+    W503,
+    # E501: line too long (manejado por Black)
+    E501
+
+# Archivos y directorios a excluir
+exclude = 
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .venv,
+    venv,
+    env,
+    migrations,
+    .tox,
+    build,
+    dist,
+    *.egg-info
+
+# Docstring requirements
+docstring-convention = google
+
+# Importaciones por línea
+import-order-style = google
+application-import-names = app
+
+# Configuración específica para diferentes tipos de archivos
+per-file-ignores =
+    # Tests pueden tener líneas más largas y usar asserts
+    tests/*:E501,S101
+    # Configuración puede tener variables no usadas
+    */settings.py:F401
+    # __init__.py pueden tener imports no usados
+    __init__.py:F401
+    # Migrations generadas automáticamente
+    migrations/*:E501,F401
+
+# Seleccionar plugins específicos
+select = 
+    # Errores de sintaxis
+    E,
+    # Warnings
+    W,
+    # Errores de flake8
+    F,
+    # Complejidad ciclomática
+    C90,
+    # Docstrings
+    D,
+    # Bugs potenciales
+    B,
+    # Comprehensions
+    C4
+
+# Configuraciones adicionales para plugins
+
+# flake8-docstrings
+ignore-decorators = 
+    property,
+    staticmethod,
+    classmethod
+
+# Longitud mínima para docstrings
+docstring-min-length = 10
+
+# Require docstrings en:
+require-plugins = 
+    flake8-docstrings,
+    flake8-bugbear,
+    flake8-comprehensions

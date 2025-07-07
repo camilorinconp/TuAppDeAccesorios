@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Login - TuAppDeAccesorios</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        input, button { width: 100%; padding: 10px; margin: 5px 0; }
+        .response { margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e8; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Debug Login - TuAppDeAccesorios</h1>
+        
+        <form id="loginForm">
+            <input type="text" id="username" placeholder="Usuario" value="admin" required>
+            <input type="password" id="password" placeholder="Contraseña" value="admin123" required>
+            <button type="submit">Ingresar</button>
+        </form>
+        
+        <div id="response" class="response" style="display: none;"></div>
+        
+        <h3>Pruebas</h3>
+        <button onclick="testBackendHealth()">Test Backend Health</button>
+        <button onclick="testCORS()">Test CORS</button>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const responseDiv = document.getElementById('response');
+            
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = 'Conectando...';
+            responseDiv.className = 'response';
+            
+            try {
+                const formBody = new URLSearchParams();
+                formBody.append('username', username);
+                formBody.append('password', password);
+                
+                console.log('Enviando request a:', `${API_URL}/token`);
+                
+                const response = await fetch(`${API_URL}/token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formBody,
+                    credentials: 'include'
+                });
+                
+                console.log('Status:', response.status);
+                console.log('Headers:', [...response.headers.entries()]);
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (response.ok) {
+                    responseDiv.className = 'response success';
+                    responseDiv.innerHTML = `
+                        <strong>✅ Login Exitoso</strong><br>
+                        Status: ${response.status}<br>
+                        Token: ${data.access_token ? 'Recibido' : 'No recibido'}<br>
+                        Type: ${data.token_type}<br>
+                        Cookies: ${document.cookie || 'Ninguna'}
+                    `;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.innerHTML = `
+                        <strong>❌ Login Error</strong><br>
+                        Status: ${response.status}<br>
+                        Error: ${data.detail || data.message || 'Error desconocido'}
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                responseDiv.className = 'response error';
+                responseDiv.innerHTML = `
+                    <strong>❌ Error de Conexión</strong><br>
+                    ${error.message}
+                `;
+            }
+        });
+        
+        async function testBackendHealth() {
+            const responseDiv = document.getElementById('response');
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = 'Probando health check...';
+            responseDiv.className = 'response';
+            
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                
+                responseDiv.className = 'response success';
+                responseDiv.innerHTML = `
+                    <strong>✅ Backend Health Check</strong><br>
+                    Status: ${data.status}<br>
+                    Response: ${JSON.stringify(data, null, 2)}
+                `;
+            } catch (error) {
+                responseDiv.className = 'response error';
+                responseDiv.innerHTML = `❌ Backend no responde: ${error.message}`;
+            }
+        }
+        
+        async function testCORS() {
+            const responseDiv = document.getElementById('response');
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = 'Probando CORS...';
+            responseDiv.className = 'response';
+            
+            try {
+                const response = await fetch(`${API_URL}/health`, {
+                    method: 'OPTIONS'
+                });
+                
+                responseDiv.className = 'response success';
+                responseDiv.innerHTML = `
+                    <strong>✅ CORS Check</strong><br>
+                    Status: ${response.status}<br>
+                    CORS Headers: ${response.headers.get('Access-Control-Allow-Origin') || 'No encontrado'}
+                `;
+            } catch (error) {
+                responseDiv.className = 'response error';
+                responseDiv.innerHTML = `❌ CORS Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

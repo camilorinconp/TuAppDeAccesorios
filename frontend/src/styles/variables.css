@@ -1,0 +1,228 @@
+/* =====================================================
+   VARIABLES CSS - TEMA TECNOLÓGICO MODERNO
+   ===================================================== */
+
+:root {
+  /* Colores Primarios - Azul Tecnológico */
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --primary-800: #1e40af;
+  --primary-900: #1e3a8a;
+  --primary-950: #172554;
+
+  /* Colores Secundarios - Púrpura Cyber */
+  --secondary-50: #faf5ff;
+  --secondary-100: #f3e8ff;
+  --secondary-200: #e9d5ff;
+  --secondary-300: #d8b4fe;
+  --secondary-400: #c084fc;
+  --secondary-500: #a855f7;
+  --secondary-600: #9333ea;
+  --secondary-700: #7c3aed;
+  --secondary-800: #6b21a8;
+  --secondary-900: #581c87;
+  --secondary-950: #3b0764;
+
+  /* Colores de Éxito - Verde Neón */
+  --success-50: #ecfdf5;
+  --success-100: #d1fae5;
+  --success-200: #a7f3d0;
+  --success-300: #6ee7b7;
+  --success-400: #34d399;
+  --success-500: #10b981;
+  --success-600: #059669;
+  --success-700: #047857;
+  --success-800: #065f46;
+  --success-900: #064e3b;
+
+  /* Colores de Error - Rojo Cyber */
+  --error-50: #fef2f2;
+  --error-100: #fee2e2;
+  --error-200: #fecaca;
+  --error-300: #fca5a5;
+  --error-400: #f87171;
+  --error-500: #ef4444;
+  --error-600: #dc2626;
+  --error-700: #b91c1c;
+  --error-800: #991b1b;
+  --error-900: #7f1d1d;
+
+  /* Colores de Advertencia - Amarillo Cyber */
+  --warning-50: #fffbeb;
+  --warning-100: #fef3c7;
+  --warning-200: #fde68a;
+  --warning-300: #fcd34d;
+  --warning-400: #fbbf24;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+  --warning-700: #b45309;
+  --warning-800: #92400e;
+  --warning-900: #78350f;
+
+  /* Grises Tecnológicos */
+  --gray-50: #f8fafc;
+  --gray-100: #f1f5f9;
+  --gray-200: #e2e8f0;
+  --gray-300: #cbd5e1;
+  --gray-400: #94a3b8;
+  --gray-500: #64748b;
+  --gray-600: #475569;
+  --gray-700: #334155;
+  --gray-800: #1e293b;
+  --gray-900: #0f172a;
+  --gray-950: #020617;
+
+  /* Fondos Oscuros Tecnológicos */
+  --dark-bg-primary: #0a0a0a;
+  --dark-bg-secondary: #111111;
+  --dark-bg-tertiary: #1a1a1a;
+  --dark-bg-card: #1e1e1e;
+  --dark-bg-elevated: #252525;
+
+  /* Fondos Claros */
+  --light-bg-primary: #ffffff;
+  --light-bg-secondary: #f8fafc;
+  --light-bg-tertiary: #f1f5f9;
+
+  /* Textos */
+  --text-primary-dark: #ffffff;
+  --text-secondary-dark: #a1a1aa;
+  --text-tertiary-dark: #71717a;
+  --text-primary-light: #18181b;
+  --text-secondary-light: #3f3f46;
+  --text-tertiary-light: #71717a;
+
+  /* Bordes */
+  --border-light: #e4e4e7;
+  --border-dark: #3f3f46;
+  --border-accent: var(--primary-500);
+
+  /* Sombras */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+
+  /* Sombras de Neón */
+  --glow-primary: 0 0 20px rgba(59, 130, 246, 0.5);
+  --glow-secondary: 0 0 20px rgba(168, 85, 247, 0.5);
+  --glow-success: 0 0 20px rgba(16, 185, 129, 0.5);
+  --glow-error: 0 0 20px rgba(239, 68, 68, 0.5);
+
+  /* Gradientes */
+  --gradient-primary: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+  --gradient-secondary: linear-gradient(135deg, var(--secondary-500), var(--secondary-700));
+  --gradient-cyber: linear-gradient(135deg, var(--primary-500), var(--secondary-500));
+  --gradient-success: linear-gradient(135deg, var(--success-500), var(--success-700));
+  --gradient-error: linear-gradient(135deg, var(--error-500), var(--error-700));
+  --gradient-dark: linear-gradient(135deg, var(--gray-800), var(--gray-900));
+
+  /* Radiuses */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* Spacing Responsive */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+  --spacing-4xl: 5rem;
+  
+  /* Container Sizes */
+  --container-xs: 100%;
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1024px;
+  --container-xl: 1280px;
+  --container-2xl: 1536px;
+  
+  /* Breakpoints */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* Transiciones */
+  --transition-fast: 150ms ease-in-out;
+  --transition-normal: 250ms ease-in-out;
+  --transition-slow: 350ms ease-in-out;
+
+  /* Z-index */
+  --z-dropdown: 1000;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-overlay: 1080;
+  --z-mobile-nav: 1090;
+  
+  /* Grid System */
+  --grid-cols-1: repeat(1, minmax(0, 1fr));
+  --grid-cols-2: repeat(2, minmax(0, 1fr));
+  --grid-cols-3: repeat(3, minmax(0, 1fr));
+  --grid-cols-4: repeat(4, minmax(0, 1fr));
+  --grid-cols-6: repeat(6, minmax(0, 1fr));
+  --grid-cols-12: repeat(12, minmax(0, 1fr));
+  
+  /* Mobile Specific */
+  --mobile-nav-height: 60px;
+  --mobile-header-height: 64px;
+  --mobile-padding: var(--spacing-md);
+  --mobile-gap: var(--spacing-sm);
+
+  /* Fuentes */
+  --font-mono: 'Fira Code', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+  --font-sans: 'Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  
+  /* Tamaños de fuente */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+}
+
+/* Tema Oscuro por Defecto */
+:root,
+[data-theme="dark"] {
+  --bg-primary: var(--dark-bg-primary);
+  --bg-secondary: var(--dark-bg-secondary);
+  --bg-tertiary: var(--dark-bg-tertiary);
+  --bg-card: var(--dark-bg-card);
+  --bg-elevated: var(--dark-bg-elevated);
+  --text-primary: var(--text-primary-dark);
+  --text-secondary: var(--text-secondary-dark);
+  --text-tertiary: var(--text-tertiary-dark);
+  --border-color: var(--border-dark);
+}
+
+/* Tema Claro */
+[data-theme="light"] {
+  --bg-primary: var(--light-bg-primary);
+  --bg-secondary: var(--light-bg-secondary);
+  --bg-tertiary: var(--light-bg-tertiary);
+  --bg-card: var(--light-bg-primary);
+  --bg-elevated: var(--light-bg-primary);
+  --text-primary: var(--text-primary-light);
+  --text-secondary: var(--text-secondary-light);
+  --text-tertiary: var(--text-tertiary-light);
+  --border-color: var(--border-light);
+}

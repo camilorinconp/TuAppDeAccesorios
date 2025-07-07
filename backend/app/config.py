@@ -1,0 +1,163 @@
+from pydantic_settings import BaseSettings
+from typing import List, Optional
+import os
+import logging
+
+# Importar gestión de secretos
+try:
+    from .vault import get_vault_secret
+    VAULT_AVAILABLE = True
+except ImportError:
+    VAULT_AVAILABLE = False
+    def get_vault_secret(name: str, default: Optional[str] = None) -> Optional[str]:
+        return os.getenv(name, default)
+
+logger = logging.getLogger(__name__)
+
+class Settings(BaseSettings):
+    # Base de datos
+    database_url: str
+    postgres_user: Optional[str] = None
+    postgres_password: Optional[str] = None
+    postgres_db: Optional[str] = None
+    
+    # Seguridad JWT - usar Vault si está disponible
+    secret_key: str = None
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+    
+    # Aplicación
+    project_name: str = "TuAppDeAccesorios"
+    environment: str = "development"  # development, staging, production
+    
+    # Redis
+    redis_url: str = "redis://localhost:6379"
+    redis_cache_enabled: bool = True
+    redis_cache_default_ttl: int = 300  # 5 minutos por defecto
+    
+    # CORS y seguridad - configuración dinámica basada en entorno
+    allowed_hosts: str = "localhost,127.0.0.1"
+    cors_origins: str = "http://localhost:3000,http://localhost:3001"  # Producción: usar CORS_ORIGINS env var
+    
+    # Rate limiting - configurado para desarrollo y producción
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 100
+    rate_limit_window: int = 3600  # 1 hora en segundos
+    
+    # SSL/Security
+    force_https: bool = False
+    secure_cookies: bool = False
+    
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
+    
+    @property
+    def cookie_secure(self) -> bool:
+        return self.secure_cookies or self.is_production
+    
+    @property
+    def cookie_samesite(self) -> str:
+        return "strict" if self.is_production else "lax"
+    
+    @property
+    def allowed_hosts_list(self) -> List[str]:
+        return [host.strip() for host in self.allowed_hosts.split(",")]
+    
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Configuración dinámica de CORS origins con validaciones de seguridad"""
+        try:
+            # Parsear origins - puede ser string JSON o separado por comas
+            if self.cors_origins.startswith('[') and self.cors_origins.endswith(']'):
+                # Formato JSON desde variables de entorno
+                import json
+                origins = json.loads(self.cors_origins)
+            else:
+                # Formato separado por comas
+                origins = [origin.strip() for origin in self.cors_origins.split(",")]
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"Error parsing CORS origins: {e}. Using fallback.")
+            origins = ["http://localhost:3000", "http://localhost:3001"]
+        
+        # Validaciones de seguridad para producción
+        if self.is_production:
+            secure_origins = []
+            for origin in origins:
+                # Validar formato de URL
+                if not origin or origin.strip() == '':
+                    continue
+                    
+                # Solo HTTPS en producción (excepto localhost para testing)
+                if origin.startswith('https://') or \
+                   (origin.startswith('http://localhost') and not self.is_production) or \
+                   origin == 'null':
+                    # Validar que no contenga caracteres peligrosos
+                    if all(c.isalnum() or c in ':/.-_' for c in origin):
+                        secure_origins.append(origin)
+                    else:
+                        logger.warning(f"CORS origin contains unsafe characters: {origin}")
+                else:
+                    logger.warning(f"Insecure CORS origin removed in production: {origin}")
+            
+            # Asegurar que tengamos al menos un origin válido
+            if not secure_origins:
+                logger.error("No valid CORS origins found for production!")
+                raise ValueError("No valid CORS origins configured for production")
+            
+            return secure_origins
+        
+        # En desarrollo, ser más permisivo pero con validaciones básicas
+        validated_origins = []
+        for origin in origins:
+            if origin and origin.strip():
+                validated_origins.append(origin.strip())
+        
+        return validated_origins or ["http://localhost:3000", "http://localhost:3001"]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        # Obtener secretos sensibles desde Vault si está disponible
+        if VAULT_AVAILABLE:
+            logger.info("Cargando secretos desde Vault")
+            
+            # SECRET_KEY desde Vault
+            vault_secret_key = get_vault_secret('SECRET_KEY')
+            if vault_secret_key:
+                self.secret_key = vault_secret_key
+            elif not self.secret_key:
+                logger.warning("SECRET_KEY no encontrado en Vault ni en variables de entorno")
+            
+            # Actualizar URL de base de datos con contraseña desde Vault
+            vault_postgres_password = get_vault_secret('POSTGRES_PASSWORD')
+            if vault_postgres_password and 'postgresql://' in self.database_url:
+                # Reemplazar contraseña en la URL de conexión
+                db_parts = self.database_url.split('@')
+                if len(db_parts) == 2:
+                    user_pass = db_parts[0].split('://')[-1]
+                    if ':' in user_pass:
+                        user = user_pass.split(':')[0]
+                        self.database_url = f"postgresql://{user}:{vault_postgres_password}@{db_parts[1]}"
+            
+            # Redis con contraseña desde Vault
+            vault_redis_password = get_vault_secret('REDIS_PASSWORD')
+            if vault_redis_password and not ':' in self.redis_url.split('://')[-1].split('@')[0]:
+                redis_parts = self.redis_url.split('://')
+                if len(redis_parts) == 2:
+                    protocol = redis_parts[0]
+                    host_port = redis_parts[1]
+                    self.redis_url = f"{protocol}://:{vault_redis_password}@{host_port}"
+        else:
+            logger.warning("Vault no disponible, usando variables de entorno")
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+
+# Inicializar el gestor de caché con la configuración
+if settings.redis_cache_enabled:
+    from .cache import cache_manager
+    cache_manager.redis_url = settings.redis_url

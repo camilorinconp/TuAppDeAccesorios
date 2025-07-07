@@ -1,0 +1,169 @@
+# Configuración de pre-commit hooks para TuAppDeAccesorios
+# Garantiza calidad y consistencia de código antes de cada commit
+
+repos:
+  # Hooks generales
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        description: Elimina espacios en blanco al final de líneas
+      - id: end-of-file-fixer
+        description: Asegura que los archivos terminen con nueva línea
+      - id: check-yaml
+        description: Verifica sintaxis de archivos YAML
+      - id: check-json
+        description: Verifica sintaxis de archivos JSON
+      - id: check-added-large-files
+        description: Previene commits de archivos grandes (>500KB)
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+        description: Verifica marcadores de conflictos de merge
+      - id: check-case-conflict
+        description: Verifica conflictos de nombres de archivos en sistemas case-insensitive
+      - id: check-symlinks
+        description: Verifica enlaces simbólicos rotos
+      - id: check-executables-have-shebangs
+        description: Verifica que archivos ejecutables tengan shebang
+      - id: check-shebang-scripts-are-executable
+        description: Verifica que scripts con shebang sean ejecutables
+
+  # Python - Formateo y linting
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        description: Formatea código Python con Black
+        language_version: python3
+        files: ^backend/
+        args: ['--line-length=88', '--target-version=py39']
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        description: Ordena imports de Python
+        files: ^backend/
+        args: ['--profile=black', '--line-length=88']
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        description: Linting de Python con flake8
+        files: ^backend/
+        args: 
+          - '--max-line-length=88'
+          - '--extend-ignore=E203,W503'
+          - '--max-complexity=10'
+        additional_dependencies:
+          - flake8-docstrings
+          - flake8-bugbear
+          - flake8-comprehensions
+
+  - repo: https://github.com/pycqa/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        description: Análisis de seguridad de Python
+        files: ^backend/
+        args: ['-r', '--skip', 'B101,B601']
+
+  # Python - Type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        description: Type checking de Python
+        files: ^backend/app/
+        args: ['--ignore-missing-imports', '--install-types', '--non-interactive']
+        additional_dependencies:
+          - types-requests
+          - types-redis
+
+  # JavaScript/TypeScript - Formateo y linting
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        description: Formatea código JavaScript/TypeScript/CSS/HTML
+        files: ^frontend/
+        types_or: [javascript, jsx, ts, tsx, css, json, html, markdown]
+        args: ['--write', '--print-width=100', '--single-quote', '--trailing-comma=es5']
+
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.56.0
+    hooks:
+      - id: eslint
+        description: Linting de JavaScript/TypeScript
+        files: ^frontend/src/.*\.(js|jsx|ts|tsx)$
+        args: ['--fix', '--ext', '.js,.jsx,.ts,.tsx']
+        additional_dependencies:
+          - '@typescript-eslint/eslint-plugin@^6.0.0'
+          - '@typescript-eslint/parser@^6.0.0'
+          - 'eslint-config-prettier@^9.0.0'
+          - 'eslint-plugin-prettier@^5.0.0'
+          - 'eslint-plugin-react@^7.30.0'
+          - 'eslint-plugin-react-hooks@^4.6.0'
+
+  # Dockerfile linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        description: Linting de Dockerfiles
+        files: Dockerfile.*
+
+  # Secrets detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        description: Detecta secretos hardcodeados
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            .*\.lock$|
+            .*\.json$|
+            .*\.md$|
+            package-lock\.json|
+            yarn\.lock
+          )$
+
+  # SQL linting
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 3.0.0a6
+    hooks:
+      - id: sqlfluff-lint
+        description: Linting de archivos SQL
+        files: \.sql$
+        args: ['--dialect=postgres']
+
+  # Configuración y documentación
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.33.0
+    hooks:
+      - id: yamllint
+        description: Linting de archivos YAML
+        args: ['-d', 'relaxed']
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.38.0
+    hooks:
+      - id: markdownlint
+        description: Linting de archivos Markdown
+        args: ['--fix']
+
+  # Git commit message linting
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.13.0
+    hooks:
+      - id: commitizen
+        description: Verifica formato de mensajes de commit
+        stages: [commit-msg]
+
+# Configuración de CI
+ci:
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

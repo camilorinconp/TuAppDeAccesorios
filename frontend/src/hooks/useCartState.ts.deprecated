@@ -1,0 +1,43 @@
+import { useState, useCallback } from 'react';
+import { CartItem, Product } from '../types';
+
+export const useCartState = () => {
+    const [cart, setCart] = useState<CartItem[]>([]);
+
+    const addToCart = useCallback((product: Product) => {
+        setCart(prevCart => {
+            const existingItem = prevCart.find(item => item.id === product.id);
+            if (existingItem) {
+                return prevCart.map(item =>
+                    item.id === product.id
+                        ? { ...item, quantity_in_cart: item.quantity_in_cart + 1 }
+                        : item
+                );
+            } else {
+                return [...prevCart, { ...product, quantity_in_cart: 1 }];
+            }
+        });
+    }, []);
+
+    const removeFromCart = useCallback((productId: number) => {
+        setCart(prevCart => prevCart.filter(item => item.id !== productId));
+    }, []);
+
+    const clearCart = useCallback(() => {
+        console.log('🧹 Limpiando carrito - estado anterior:', cart.length);
+        setCart([]);
+        console.log('✅ Carrito limpiado');
+    }, [cart.length]);
+
+    const totalAmount = cart.reduce((total, item) => 
+        total + (item.selling_price * item.quantity_in_cart), 0
+    );
+
+    return {
+        cart,
+        addToCart,
+        removeFromCart,
+        clearCart,
+        totalAmount
+    };
+};

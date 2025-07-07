@@ -1,0 +1,161 @@
+groups:
+  - name: tuapp.alerts
+    rules:
+      # Alertas de disponibilidad
+      - alert: ServiceDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Servicio {{ $labels.job }} está caído"
+          description: "El servicio {{ $labels.job }} en {{ $labels.instance }} ha estado caído por más de 5 minutos."
+
+      - alert: HighErrorRate
+        expr: (rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alta tasa de errores en {{ $labels.job }}"
+          description: "La tasa de errores 5xx es {{ $value | humanizePercentage }} en los últimos 5 minutos."
+
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tiempo de respuesta alto en {{ $labels.job }}"
+          description: "El percentil 95 del tiempo de respuesta es {{ $value }}s en los últimos 5 minutos."
+
+      # Alertas de sistema
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso alto de CPU en {{ $labels.instance }}"
+          description: "El uso de CPU es {{ $value | humanizePercentage }} en {{ $labels.instance }}."
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso alto de memoria en {{ $labels.instance }}"
+          description: "El uso de memoria es {{ $value | humanizePercentage }} en {{ $labels.instance }}."
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Espacio en disco bajo en {{ $labels.instance }}"
+          description: "Solo queda {{ $value | humanizePercentage }} de espacio en disco en {{ $labels.instance }}."
+
+      # Alertas de base de datos
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL está caído"
+          description: "La base de datos PostgreSQL ha estado caída por más de 5 minutos."
+
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alto número de conexiones en PostgreSQL"
+          description: "PostgreSQL tiene {{ $value }} conexiones activas."
+
+      - alert: PostgreSQLSlowQueries
+        expr: rate(pg_stat_statements_mean_time_seconds[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consultas lentas en PostgreSQL"
+          description: "El tiempo promedio de consulta es {{ $value }}s."
+
+      # Alertas de Redis
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis está caído"
+          description: "Redis ha estado caído por más de 5 minutos."
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso alto de memoria en Redis"
+          description: "Redis está usando {{ $value | humanizePercentage }} de su memoria máxima."
+
+      # Alertas de aplicación
+      - alert: HighRequestVolume
+        expr: rate(http_requests_total[5m]) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alto volumen de peticiones"
+          description: "La aplicación está recibiendo {{ $value }} peticiones por segundo."
+
+      - alert: AuthenticationFailures
+        expr: rate(authentication_failures_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Muchos fallos de autenticación"
+          description: "Se han detectado {{ $value }} fallos de autenticación por segundo."
+
+      - alert: CacheHitRateLow
+        expr: rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) < 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Baja tasa de aciertos en caché"
+          description: "La tasa de aciertos en caché es {{ $value | humanizePercentage }}."
+
+      # Alertas de contenedores
+      - alert: ContainerHighCPU
+        expr: (sum(rate(container_cpu_usage_seconds_total{name!=""}[5m])) by (name) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso alto de CPU en contenedor {{ $labels.name }}"
+          description: "El contenedor {{ $labels.name }} está usando {{ $value }}% de CPU."
+
+      - alert: ContainerHighMemory
+        expr: (container_memory_usage_bytes{name!=""} / container_spec_memory_limit_bytes{name!=""}) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso alto de memoria en contenedor {{ $labels.name }}"
+          description: "El contenedor {{ $labels.name }} está usando {{ $value | humanizePercentage }} de su memoria límite."
+
+      - alert: ContainerRestarting
+        expr: rate(container_last_seen{name!=""}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Contenedor {{ $labels.name }} reiniciando"
+          description: "El contenedor {{ $labels.name }} se ha reiniciado {{ $value }} veces en los últimos 5 minutos."

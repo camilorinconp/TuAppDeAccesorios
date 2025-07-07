@@ -1,0 +1,243 @@
+version: '3.8'
+
+services:
+  # Base de datos para tests
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: tuapp_test
+      POSTGRES_USER: tuapp_test_user
+      POSTGRES_PASSWORD: test_password
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tuapp_test_user -d tuapp_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      postgres
+      -c log_statement=all
+      -c log_destination=stderr
+      -c logging_collector=on
+      -c max_connections=200
+
+  # Redis para tests
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - test_redis_data:/data
+
+  # Backend en modo test
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      - DATABASE_URL=postgresql://tuapp_test_user:test_password@db:5432/tuapp_test
+      - SECRET_KEY=test-secret-key-super-secure-for-testing-only
+      - REDIS_URL=redis://redis:6379/1
+      - ENVIRONMENT=testing
+      - LOG_LEVEL=DEBUG
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - ALLOWED_HOSTS=localhost,backend,127.0.0.1
+      - REDIS_CACHE_ENABLED=true
+      - PYTEST_CURRENT_TEST=true
+    volumes:
+      - ./backend:/app
+      - backend_test_logs:/app/logs
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        python -c 'import time; time.sleep(10)' &&
+        echo 'Running database migrations...' &&
+        alembic upgrade head &&
+        echo 'Starting test server...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # Frontend en modo test
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
+      - REACT_APP_ENVIRONMENT=testing
+      - NODE_ENV=test
+      - GENERATE_SOURCEMAP=false
+      - CI=true
+    volumes:
+      - ./frontend:/app
+      - frontend_test_coverage:/app/coverage
+    ports:
+      - "3001:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Installing dependencies...' &&
+        npm ci &&
+        echo 'Starting development server...' &&
+        npm start
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Nginx para tests
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8082:80"
+    volumes:
+      - ./nginx/nginx.test.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Servicio para ejecutar tests
+  test-runner:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      - DATABASE_URL=postgresql://tuapp_test_user:test_password@db:5432/tuapp_test
+      - SECRET_KEY=test-secret-key-super-secure-for-testing-only
+      - REDIS_URL=redis://redis:6379/1
+      - ENVIRONMENT=testing
+      - PYTHONPATH=/app
+    volumes:
+      - ./backend:/app
+      - test_reports:/app/test-reports
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Running database migrations...' &&
+        alembic upgrade head &&
+        echo 'Running tests...' &&
+        pytest tests/ -v --cov=app --cov-report=html --cov-report=xml --cov-report=term-missing --junitxml=test-reports/junit.xml
+      "
+    profiles:
+      - test
+
+  # Servicio para tests de integración
+  integration-tester:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      - DATABASE_URL=postgresql://tuapp_test_user:test_password@db:5432/tuapp_test
+      - SECRET_KEY=test-secret-key-super-secure-for-testing-only
+      - REDIS_URL=redis://redis:6379/1
+      - ENVIRONMENT=testing
+      - API_BASE_URL=http://backend:8000
+    volumes:
+      - ./backend:/app
+      - integration_test_reports:/app/integration-reports
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for backend to be ready...' &&
+        python -c 'import time; time.sleep(30)' &&
+        echo 'Running integration tests...' &&
+        pytest tests/test_api_integration.py -v --junitxml=integration-reports/junit-integration.xml
+      "
+    profiles:
+      - integration
+
+  # Servicio para tests de carga
+  load-tester:
+    image: locustio/locust:2.17.0
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./tests/load:/mnt/locust
+    environment:
+      - LOCUST_HOST=http://backend:8000
+      - LOCUST_USERS=50
+      - LOCUST_SPAWN_RATE=5
+      - LOCUST_RUN_TIME=300s
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Starting load tests...' &&
+        locust -f /mnt/locust/locustfile.py --host=http://backend:8000 --users=50 --spawn-rate=5 --run-time=300s --headless --html=/mnt/locust/report.html
+      "
+    profiles:
+      - load
+
+  # Servicio para análisis de seguridad
+  security-scanner:
+    image: owasp/zap2docker-stable:latest
+    volumes:
+      - security_reports:/zap/wrk
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Running security baseline scan...' &&
+        zap-baseline.py -t http://backend:8000 -J zap-report.json -H zap-report.html
+      "
+    profiles:
+      - security
+
+volumes:
+  test_postgres_data:
+  test_redis_data:
+  backend_test_logs:
+  frontend_test_coverage:
+  test_reports:
+  integration_test_reports:
+  security_reports:
+
+networks:
+  default:
+    name: tuapp_test_network

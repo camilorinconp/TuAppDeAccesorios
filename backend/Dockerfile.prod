@@ -1,0 +1,75 @@
+# Multi-stage build para producción optimizada
+FROM python:3.11-slim-bookworm AS builder
+
+# Variables de entorno para build
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Instalar dependencias de build
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libffi-dev \
+    python3-dev \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Crear virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copiar requirements y instalar dependencias
+COPY requirements.txt .
+RUN pip install --upgrade pip \
+    && pip install -r requirements.txt
+
+# ===== PRODUCCIÓN =====
+FROM python:3.11-slim-bookworm AS production
+
+# Variables de entorno para producción
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PATH="/opt/venv/bin:$PATH"
+
+# Instalar solo runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Crear usuario no-root
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copiar virtual environment desde builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Crear directorios
+WORKDIR /app
+RUN mkdir -p /app/logs && chown appuser:appuser /app/logs
+
+# Copiar código de aplicación
+COPY --chown=appuser:appuser . .
+
+# Cambiar a usuario no-root
+USER appuser
+
+# Exponer puerto
+EXPOSE 8000
+
+# Health check optimizado
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Comando para producción con múltiples workers
+CMD ["uvicorn", "app.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "4", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--log-level", "info", \
+     "--access-log", \
+     "--no-server-header"]

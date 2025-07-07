@@ -1,0 +1,3 @@
+CREATE DATABASE tuapp_db;
+CREATE USER tuapp_user WITH ENCRYPTED PASSWORD 'tuapp_password';
+GRANT ALL PRIVILEGES ON DATABASE tuapp_db TO tuapp_user;

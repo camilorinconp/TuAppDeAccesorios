@@ -1,0 +1,106 @@
+global:
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'noreply@tudominio.com'
+  smtp_auth_username: 'noreply@tudominio.com'
+  smtp_auth_password: 'changeme'  # Cambiar por contraseña real
+  smtp_require_tls: true
+
+route:
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'web.hook'
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+
+receivers:
+  - name: 'web.hook'
+    webhook_configs:
+      - url: 'http://localhost:5001/'
+
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'admin@tudominio.com'
+        subject: '🚨 ALERTA CRÍTICA: {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        body: |
+          {{ range .Alerts }}
+          🚨 **ALERTA CRÍTICA**
+          
+          **Resumen:** {{ .Annotations.summary }}
+          **Descripción:** {{ .Annotations.description }}
+          **Severidad:** {{ .Labels.severity }}
+          **Instancia:** {{ .Labels.instance }}
+          **Trabajo:** {{ .Labels.job }}
+          **Hora:** {{ .StartsAt }}
+          
+          **Detalles:**
+          {{ range .Labels.SortedPairs }}
+          - {{ .Name }}: {{ .Value }}
+          {{ end }}
+          
+          **Estado:** {{ .Status }}
+          
+          ---
+          {{ end }}
+          
+          **Dashboard:** http://localhost:3001/d/app-overview
+          **Prometheus:** http://localhost:9090/alerts
+    
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#alerts'
+        title: '🚨 Alerta Crítica'
+        text: |
+          {{ range .Alerts }}
+          **{{ .Annotations.summary }}**
+          {{ .Annotations.description }}
+          Severidad: {{ .Labels.severity }}
+          Instancia: {{ .Labels.instance }}
+          {{ end }}
+
+  - name: 'warning-alerts'
+    email_configs:
+      - to: 'admin@tudominio.com'
+        subject: '⚠️ ALERTA: {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        body: |
+          {{ range .Alerts }}
+          ⚠️ **ALERTA**
+          
+          **Resumen:** {{ .Annotations.summary }}
+          **Descripción:** {{ .Annotations.description }}
+          **Severidad:** {{ .Labels.severity }}
+          **Instancia:** {{ .Labels.instance }}
+          **Trabajo:** {{ .Labels.job }}
+          **Hora:** {{ .StartsAt }}
+          
+          **Detalles:**
+          {{ range .Labels.SortedPairs }}
+          - {{ .Name }}: {{ .Value }}
+          {{ end }}
+          
+          ---
+          {{ end }}
+    
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#alerts'
+        title: '⚠️ Alerta'
+        text: |
+          {{ range .Alerts }}
+          **{{ .Annotations.summary }}**
+          {{ .Annotations.description }}
+          Severidad: {{ .Labels.severity }}
+          {{ end }}
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']

@@ -1,0 +1,139 @@
+import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+
+interface AuthContextType {
+  isAuthenticated: boolean;
+  userRole: string | null;
+  login: () => Promise<boolean>;
+  logout: () => void;
+  checkAuthStatus: () => Promise<boolean>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+
+  // Verificar estado de autenticación al cargar
+  useEffect(() => {
+    // Solo verificar si hay cookies que sugieren autenticación previa
+    if (document.cookie.includes('access_token')) {
+      checkAuthStatus();
+    } else {
+      setIsInitialized(true);
+    }
+  }, []);
+
+  const checkAuthStatus = async (): Promise<boolean> => {
+    try {
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/verify`, {
+        method: 'GET',
+        credentials: 'include', // Incluir cookies httpOnly
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('Auth verification response:', userData);
+        setIsAuthenticated(true);
+        setUserRole(userData.role);
+        setIsInitialized(true);
+        return true;
+      } else {
+        console.log('Auth verification failed:', response.status);
+        setIsAuthenticated(false);
+        setUserRole(null);
+        setIsInitialized(true);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error checking auth status:', error);
+      setIsAuthenticated(false);
+      setUserRole(null);
+      setIsInitialized(true);
+      return false;
+    }
+  };
+
+  const login = async (): Promise<boolean> => {
+    return await checkAuthStatus();
+  };
+
+  const logout = async () => {
+    try {
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      await fetch(`${API_URL}/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (error) {
+      console.error('Error during logout:', error);
+    } finally {
+      setIsAuthenticated(false);
+      setUserRole(null);
+    }
+  };
+
+  // No renderizar hasta que se inicialice el estado de auth
+  if (!isInitialized) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <AuthContext.Provider value={{ isAuthenticated, userRole, login, logout, checkAuthStatus }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+// Hook para refrescar automáticamente el token
+export const useTokenRefresh = () => {
+  const { logout, checkAuthStatus } = useAuth();
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_URL}/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          // Si falla el refresh, verificar estado y cerrar sesión si es necesario
+          const isAuthenticated = await checkAuthStatus();
+          if (!isAuthenticated) {
+            logout();
+          }
+        }
+      } catch (error) {
+        console.error('Error refreshing token:', error);
+        // Verificar estado de autenticación
+        const isAuthenticated = await checkAuthStatus();
+        if (!isAuthenticated) {
+          logout();
+        }
+      }
+    }, 14 * 60 * 1000); // Refrescar cada 14 minutos (antes de que expire a los 15)
+
+    return () => clearInterval(interval);
+  }, [logout, checkAuthStatus]);
+};

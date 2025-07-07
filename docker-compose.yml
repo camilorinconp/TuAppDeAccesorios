@@ -1,0 +1,130 @@
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tuapp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tuapp_password}
+      POSTGRES_DB: ${POSTGRES_DB:-tuapp_db}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init-user-db.sh:/docker-entrypoint-initdb.d/01-init-user-db.sh:ro
+      - ./database/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - postgres_logs:/var/log/postgresql
+    # PRODUCCIÓN: Puerto NO expuesto por seguridad
+    # Solo accesible desde otros servicios Docker
+    # ports:
+    #   - "5433:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tuapp_user} -d ${POSTGRES_DB:-tuapp_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Usar configuración optimizada
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    # PRODUCCIÓN: Puerto Redis NO expuesto por seguridad
+    # ports:
+    #   - "6380:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.simple
+    ports:
+      - "8000:8000"
+    environment:
+      # Base de datos
+      DATABASE_URL: ${DATABASE_URL:-postgresql://tuapp_user:tuapp_password@db:5432/tuapp_db}
+      
+      # Autenticación
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      
+      # Redis
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_CACHE_ENABLED: ${REDIS_CACHE_ENABLED:-true}
+      REDIS_CACHE_DEFAULT_TTL: ${REDIS_CACHE_DEFAULT_TTL:-300}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FILE: ${LOG_FILE:-}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      
+      # App settings
+      PROJECT_NAME: ${PROJECT_NAME:-TuAppDeAccesorios}
+      
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - backend_logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
+      REACT_APP_ENVIRONMENT: ${REACT_APP_ENVIRONMENT:-development}
+      GENERATE_SOURCEMAP: ${GENERATE_SOURCEMAP:-true}
+      FAST_REFRESH: ${FAST_REFRESH:-true}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  postgres_logs:
+    driver: local
+  redis_data:
+    driver: local
+  backend_logs:
+    driver: local

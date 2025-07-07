@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Distributor Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 5px 0; border-radius: 3px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Distributor Login</h1>
+    
+    <div>
+        <label>Nombre: </label>
+        <input type="text" id="username" value="Distribuidor Demo">
+    </div>
+    <div>
+        <label>Código: </label>
+        <input type="text" id="password" value="DEMO123">
+    </div>
+    <button onclick="testLogin()">🔐 Test Login</button>
+    <button onclick="clearLogs()">🧹 Clear</button>
+    
+    <div id="logs"></div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        function log(message, type = 'log') {
+            const logs = document.getElementById('logs');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logs.appendChild(div);
+            console.log(message);
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+        
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            log('🔐 Iniciando test de login distribuidor...', 'log');
+            log(`👤 Usuario: ${username}`, 'log');
+            log(`🔑 Código: ${password}`, 'log');
+            
+            try {
+                // Probar primero conectividad básica
+                log('🌐 Probando conectividad básica...', 'log');
+                const healthResponse = await fetch(`${API_URL}/health`);
+                log(`✅ Health check: ${healthResponse.status}`, 'success');
+                
+                // Probar login de distribuidor
+                log('📤 Enviando login de distribuidor...', 'log');
+                
+                const formData = new URLSearchParams();
+                formData.append('username', username);
+                formData.append('password', password);
+                
+                log(`📝 Form data: ${formData.toString()}`, 'log');
+                
+                const response = await fetch(`${API_URL}/distributor-token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData,
+                    credentials: 'include',
+                });
+                
+                log(`📥 Response status: ${response.status}`, response.ok ? 'success' : 'error');
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                log(`✅ Login exitoso!`, 'success');
+                log(`🎫 Token: ${data.access_token.substring(0, 50)}...`, 'success');
+                
+                // Probar obtener distribuidores
+                log('📋 Probando obtener distribuidores...', 'log');
+                const distResponse = await fetch(`${API_URL}/distributors/`, {
+                    headers: {
+                        'Authorization': `Bearer ${data.access_token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                });
+                
+                log(`📥 Distributors response: ${distResponse.status}`, distResponse.ok ? 'success' : 'error');
+                
+                if (distResponse.ok) {
+                    const distributors = await distResponse.json();
+                    log(`✅ Distribuidores obtenidos: ${distributors.length}`, 'success');
+                } else {
+                    const errorText = await distResponse.text();
+                    log(`❌ Error distribuidores: ${errorText}`, 'error');
+                }
+                
+            } catch (error) {
+                log(`💥 ERROR: ${error.message}`, 'error');
+                log(`🔍 Error completo: ${JSON.stringify(error)}`, 'error');
+            }
+        }
+        
+        window.onload = () => {
+            log('🌐 Página cargada, lista para probar', 'log');
+        };
+    </script>
+</body>
+</html>
