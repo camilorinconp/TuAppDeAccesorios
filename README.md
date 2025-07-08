@@ -105,7 +105,7 @@ cd TuAppDeAccesorios
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # o
-venv\Scripts\activate  # Windows
+vvenv\Scripts\activate  # Windows
 
 # 3. Instalar dependencias
 cd backend
@@ -243,6 +243,34 @@ Si encuentras problemas o necesitas ayuda:
 2. **Crear nuevo issue** con detalles del problema
 3. **Consultar logs** en Render Dashboard
 4. **Verificar configuración** en DEPLOYMENT.md
+
+---
+
+## 📝 Notas de Despliegue y Solución de Problemas
+
+Esta sección documenta los cambios realizados para solucionar problemas durante el despliegue inicial en Render.
+
+### 1. Error de Migración de Base de Datos
+
+- **Problema:** El despliegue fallaba debido a un archivo de migración de Alembic (`79a24bab3acc_add_missing_user_columns.py`) que estaba vacío y contenía comandos `drop_table` incorrectos.
+- **Solución:** Se reemplazó el contenido del archivo de migración con el código correcto para añadir las columnas faltantes (`email`, `is_active`, `created_at`) a la tabla `users`.
+
+### 2. Error de Arranque por Tarea Asíncrona (`RuntimeError: no running event loop`)
+
+- **Problema:** La aplicación intentaba crear una tarea de `asyncio` (`_periodic_flush` en `AuditLogger`) en el momento de la importación del módulo, antes de que el bucle de eventos de `asyncio` fuera iniciado por Uvicorn/Gunicorn.
+- **Solución:** Se modificó la clase `AuditLogger` para que la tarea no se inicie en el constructor. En su lugar, se añadió un método `start_periodic_flush` que es llamado explícitamente desde un evento `startup` de FastAPI en `main.py`, asegurando que el bucle de eventos ya esté en ejecución.
+
+### 3. Error de Configuración de CORS en Producción (`ValueError: No valid CORS origins`)
+
+- **Problema:** La configuración de CORS era demasiado estricta para el entorno de producción de Render. Rechazaba los orígenes `http://localhost` y, al no encontrar una alternativa segura, lanzaba una excepción que detenía el arranque.
+- **Solución:** Se actualizó la lógica de `config.py` para que, en un entorno de producción, si la variable de entorno `CORS_ORIGINS` no está definida, utilice automáticamente la URL pública de Render (`RENDER_EXTERNAL_URL`) como un origen permitido. Además, se eliminó la excepción para que un error de CORS no detenga el despliegue, sino que solo lo registre en los logs.
+
+### 4. Errores de Conexión con Redis y Vault
+
+- **Problema:** La aplicación intentaba conectarse a Redis y Vault en `localhost`, lo cual fallaba en el entorno de Render.
+- **Solución:** Se modificó `config.py` para:
+    - **Redis:** Priorizar el uso de la variable de entorno `REDIS_URL` que Render provee.
+    - **Vault:** Desactivar la conexión a Vault por defecto. Ahora solo se intentará si la variable de entorno `VAULT_ENABLED` se establece explícitamente en `true`.
 
 ---
 
