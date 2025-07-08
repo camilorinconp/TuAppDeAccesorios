@@ -205,7 +205,7 @@ const ProductNameAutocompleteFixed: React.FC<ProductNameAutocompleteProps> = ({
           margin: 0,
           borderRadius: '0 0 var(--radius-lg) var(--radius-lg)'
         }}>
-          💡 Escribe palabras como "funda", "cable", "protector", etc.
+          💡 Escribe palabras como &quot;funda&quot;, &quot;cable&quot;, &quot;protector&quot;, etc.
         </div>
       )}
     </div>

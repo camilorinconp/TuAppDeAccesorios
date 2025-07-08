@@ -66,7 +66,7 @@ const DashboardPage: React.FC = () => {
     value: item.revenue / 1000000, // Convertir a millones para el gráfico
   }));
 
-  const categoryChartData = stats.categoryDistribution.map((category, index) => ({
+  const categoryChartData = stats.categoryDistribution.map((category) => ({
     label: category.category,
     value: category.count,
   }));
@@ -191,7 +191,7 @@ const DashboardPage: React.FC = () => {
           title="Productos Más Vendidos"
           subtitle="Top 5 del mes actual"
           data={topSellingProductsData}
-          onItemClick={(item) => navigate('/inventory')}
+          onItemClick={() => navigate('/inventory')}
           showMore={{
             text: "Ver todos los productos",
             onClick: () => navigate('/inventory')
@@ -203,7 +203,7 @@ const DashboardPage: React.FC = () => {
           title="Ventas Recientes"
           subtitle="Últimas 5 transacciones"
           data={recentSalesData}
-          onItemClick={(item) => navigate('/pos-test')}
+          onItemClick={() => navigate('/pos-test')}
           showMore={{
             text: "Ver historial completo",
             onClick: () => navigate('/pos-test')

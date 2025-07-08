@@ -1,338 +1,255 @@
-# ==================================================================
-# ROUTER DE AUDITORÍA - ENDPOINTS PARA CONSULTA DE AUDITORÍA
-# ==================================================================
-
-from typing import List, Optional
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+"""
+Endpoints para gestión y consulta de auditoría
+"""
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
+import csv
+import io
+from fastapi.responses import StreamingResponse
 
-from .. import schemas
-from ..dependencies import get_db, get_current_admin_user
-from ..models.audit import AuditActionType, AuditSeverity
-from ..services.audit_service import AuditQueryService
-from ..logging_config import get_logger
+from ..database import get_db
+from ..auth import get_current_user
+from ..dependencies import get_current_admin_user
+from ..security.audit_logger import (
+    audit_logger,
+    AuditEventType,
+    AuditSeverity,
+    AuditContext,
+    log_data_access,
+    log_system_event
+)
+from ..security.endpoint_security import secure_endpoint, admin_required
+from ..logging_config import get_secure_logger
 
-router = APIRouter()
-logger = get_logger(__name__)
+router = APIRouter(prefix="/api/audit", tags=["Audit"])
+logger = get_secure_logger(__name__)
 
 
-@router.get("/audit/user-activity/{user_id}", dependencies=[Depends(get_current_admin_user)])
-def get_user_activity(
-    user_id: int,
-    start_date: Optional[datetime] = Query(None, description="Fecha de inicio (ISO format)"),
-    end_date: Optional[datetime] = Query(None, description="Fecha de fin (ISO format)"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros"),
-    db: Session = Depends(get_db)
+@router.get("/trail")
+@secure_endpoint(max_requests_per_hour=20, require_admin=True)
+@admin_required
+async def get_audit_trail(
+    request: Request,
+    user_id: Optional[int] = Query(None, description="Filter by user ID"),
+    resource_type: Optional[str] = Query(None, description="Filter by resource type"),
+    resource_id: Optional[str] = Query(None, description="Filter by resource ID"),
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    start_date: Optional[datetime] = Query(None, description="Start date for filtering"),
+    end_date: Optional[datetime] = Query(None, description="End date for filtering"),
+    limit: int = Query(100, le=1000, description="Maximum number of records"),
+    offset: int = Query(0, description="Number of records to skip"),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_admin_user)
 ):
-    """
-    Obtiene la actividad de auditoría de un usuario específico
-    Requiere permisos de administrador
-    """
+    """Obtener trail de auditoría con filtros"""
     try:
-        activity = AuditQueryService.get_user_activity(
-            db=db,
+        # Validar event_type si se proporciona
+        audit_event_type = None
+        if event_type:
+            try:
+                audit_event_type = AuditEventType(event_type)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid event type: {event_type}"
+                )
+        
+        # Obtener trail de auditoría
+        audit_trail = await audit_logger.get_audit_trail(
             user_id=user_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            event_type=audit_event_type,
             start_date=start_date,
             end_date=end_date,
-            limit=limit
+            limit=limit,
+            offset=offset
+        )
+        
+        # Crear contexto para auditar esta consulta
+        context = AuditContext(
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent"),
+            endpoint=request.url.path,
+            method=request.method
+        )
+        
+        # Log de acceso a auditoría
+        await log_data_access(
+            user_id=current_user.id,
+            username=current_user.username,
+            resource_type="audit",
+            resource_id="trail",
+            action="view",
+            context=context,
+            metadata={
+                "filters": {
+                    "user_id": user_id,
+                    "resource_type": resource_type,
+                    "resource_id": resource_id,
+                    "event_type": event_type,
+                    "start_date": start_date.isoformat() if start_date else None,
+                    "end_date": end_date.isoformat() if end_date else None,
+                    "limit": limit,
+                    "offset": offset
+                },
+                "records_returned": len(audit_trail)
+            }
         )
         
         return {
-            "user_id": user_id,
-            "activity_count": len(activity),
-            "start_date": start_date,
-            "end_date": end_date,
-            "activity": [
-                {
-                    "id": log.id,
-                    "action_type": log.action_type,
-                    "severity": log.severity,
-                    "timestamp": log.timestamp,
-                    "description": log.description,
-                    "table_name": log.table_name,
-                    "record_id": log.record_id,
-                    "ip_address": log.ip_address,
-                    "endpoint": log.endpoint,
-                    "execution_time_ms": log.execution_time_ms
-                } for log in activity
-            ]
-        }
-        
-    except Exception as e:
-        logger.error(
-            "Error al obtener actividad de usuario",
-            user_id=user_id,
-            error=str(e)
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al obtener actividad de usuario"
-        )
-
-
-@router.get("/audit/security-alerts", dependencies=[Depends(get_current_admin_user)])
-def get_security_alerts(
-    resolved: Optional[bool] = Query(None, description="Filtrar por estado resuelto"),
-    severity: Optional[AuditSeverity] = Query(None, description="Filtrar por severidad"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros"),
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene alertas de seguridad del sistema
-    Requiere permisos de administrador
-    """
-    try:
-        alerts = AuditQueryService.get_security_alerts(
-            db=db,
-            resolved=resolved,
-            severity=severity,
-            limit=limit
-        )
-        
-        return {
-            "alerts_count": len(alerts),
+            "audit_trail": audit_trail,
+            "total_returned": len(audit_trail),
+            "offset": offset,
+            "limit": limit,
+            "has_more": len(audit_trail) == limit,
             "filters": {
-                "resolved": resolved,
-                "severity": severity
-            },
-            "alerts": [
-                {
-                    "id": alert.id,
-                    "alert_type": alert.alert_type,
-                    "severity": alert.severity,
-                    "timestamp": alert.timestamp,
-                    "description": alert.description,
-                    "ip_address": alert.ip_address,
-                    "username_attempt": alert.username_attempt,
-                    "resolved": alert.resolved == "true",
-                    "resolved_by": alert.resolved_by,
-                    "resolved_at": alert.resolved_at,
-                    "details": alert.details
-                } for alert in alerts
-            ]
-        }
-        
-    except Exception as e:
-        logger.error(
-            "Error al obtener alertas de seguridad",
-            error=str(e)
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al obtener alertas de seguridad"
-        )
-
-
-@router.post("/audit/security-alerts/{alert_id}/resolve", dependencies=[Depends(get_current_admin_user)])
-def resolve_security_alert(
-    alert_id: int,
-    resolution_notes: str = Query(..., description="Notas de resolución"),
-    current_user = Depends(get_current_admin_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Marca una alerta de seguridad como resuelta
-    Requiere permisos de administrador
-    """
-    try:
-        # Buscar la alerta
-        alert = db.query(SecurityAlert).filter(SecurityAlert.id == alert_id).first()
-        if not alert:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Alerta de seguridad no encontrada"
-            )
-        
-        # Marcar como resuelta
-        alert.resolved = "true"
-        alert.resolved_by = current_user.id
-        alert.resolved_at = datetime.utcnow()
-        alert.resolution_notes = resolution_notes
-        
-        db.commit()
-        
-        logger.info(
-            "Alerta de seguridad resuelta",
-            alert_id=alert_id,
-            resolved_by=current_user.id,
-            username=current_user.username
-        )
-        
-        return {
-            "message": "Alerta de seguridad marcada como resuelta",
-            "alert_id": alert_id,
-            "resolved_by": current_user.username,
-            "resolved_at": alert.resolved_at
+                "user_id": user_id,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "event_type": event_type,
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None
+            }
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            "Error al resolver alerta de seguridad",
-            alert_id=alert_id,
-            error=str(e)
-        )
-        db.rollback()
+        logger.error(f"Error getting audit trail: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al resolver alerta de seguridad"
+            detail="Error retrieving audit trail"
         )
 
 
-@router.get("/audit/failed-logins", dependencies=[Depends(get_current_admin_user)])
-def get_failed_login_attempts(
-    username: Optional[str] = Query(None, description="Filtrar por usuario"),
-    ip_address: Optional[str] = Query(None, description="Filtrar por dirección IP"),
-    hours: int = Query(24, ge=1, le=168, description="Horas hacia atrás para buscar"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros"),
-    db: Session = Depends(get_db)
+@router.get("/statistics")
+@secure_endpoint(max_requests_per_hour=10, require_admin=True)
+@admin_required
+async def get_audit_statistics(
+    request: Request,
+    start_date: Optional[datetime] = Query(None, description="Start date for statistics"),
+    end_date: Optional[datetime] = Query(None, description="End date for statistics"),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_admin_user)
 ):
-    """
-    Obtiene intentos de login fallidos
-    Requiere permisos de administrador
-    """
+    """Obtener estadísticas de auditoría"""
     try:
-        attempts = AuditQueryService.get_failed_login_attempts(
-            db=db,
-            username=username,
-            ip_address=ip_address,
-            hours=hours,
-            limit=limit
+        # Usar valores por defecto si no se proporcionan fechas
+        if not start_date:
+            start_date = datetime.utcnow() - timedelta(days=30)
+        
+        if not end_date:
+            end_date = datetime.utcnow()
+        
+        # Obtener estadísticas
+        stats = await audit_logger.get_audit_statistics(
+            start_date=start_date,
+            end_date=end_date
         )
         
+        # Crear contexto para auditar esta consulta
+        context = AuditContext(
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent"),
+            endpoint=request.url.path,
+            method=request.method
+        )
+        
+        # Log de acceso a estadísticas
+        await log_data_access(
+            user_id=current_user.id,
+            username=current_user.username,
+            resource_type="audit",
+            resource_id="statistics",
+            action="view",
+            context=context,
+            metadata={
+                "period": {
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat()
+                }
+            }
+        )
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Error getting audit statistics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving audit statistics"
+        )
+
+
+@router.get("/events/types")
+@secure_endpoint(max_requests_per_hour=30, require_admin=True)
+@admin_required
+async def get_event_types(
+    request: Request,
+    current_user = Depends(get_current_admin_user)
+):
+    """Obtener tipos de eventos disponibles para filtrado"""
+    try:
+        event_types = [
+            {
+                "value": event_type.value,
+                "description": event_type.value.replace("_", " ").title()
+            }
+            for event_type in AuditEventType
+        ]
+        
+        severities = [
+            {
+                "value": severity.value,
+                "description": severity.value.title()
+            }
+            for severity in AuditSeverity
+        ]
+        
         return {
-            "attempts_count": len(attempts),
-            "time_window_hours": hours,
-            "filters": {
-                "username": username,
-                "ip_address": ip_address
-            },
-            "attempts": [
-                {
-                    "id": attempt.id,
-                    "timestamp": attempt.timestamp,
-                    "username": attempt.username,
-                    "ip_address": attempt.ip_address,
-                    "failure_reason": attempt.failure_reason,
-                    "user_agent": attempt.user_agent
-                } for attempt in attempts
-            ]
+            "event_types": event_types,
+            "severities": severities
         }
         
     except Exception as e:
-        logger.error(
-            "Error al obtener intentos de login fallidos",
-            error=str(e)
-        )
+        logger.error(f"Error getting event types: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al obtener intentos de login fallidos"
+            detail="Error retrieving event types"
         )
 
 
-@router.get("/audit/statistics", dependencies=[Depends(get_current_admin_user)])
-def get_audit_statistics(
-    hours: int = Query(24, ge=1, le=168, description="Horas hacia atrás para estadísticas"),
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene estadísticas generales de auditoría
-    Requiere permisos de administrador
-    """
+@router.get("/health")
+async def get_audit_health(request: Request):
+    """Health check del sistema de auditoría"""
     try:
-        stats = AuditQueryService.get_audit_statistics(db=db, hours=hours)
-        
-        return {
-            "statistics": stats,
-            "generated_at": datetime.utcnow(),
-            "time_window_hours": hours
+        health_data = {
+            "audit_enabled": audit_logger.enabled,
+            "async_logging": audit_logger.async_logging,
+            "buffer_size": len(audit_logger.log_buffer),
+            "max_buffer_size": audit_logger.buffer_size,
+            "retention_days": audit_logger.retention_days,
+            "log_sensitive_data": audit_logger.log_sensitive_data,
+            "status": "healthy"
         }
         
-    except Exception as e:
-        logger.error(
-            "Error al obtener estadísticas de auditoría",
-            error=str(e)
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al obtener estadísticas de auditoría"
-        )
-
-
-@router.get("/audit/events", dependencies=[Depends(get_current_admin_user)])
-def get_audit_events(
-    action_type: Optional[AuditActionType] = Query(None, description="Filtrar por tipo de acción"),
-    severity: Optional[AuditSeverity] = Query(None, description="Filtrar por severidad"),
-    table_name: Optional[str] = Query(None, description="Filtrar por tabla afectada"),
-    start_date: Optional[datetime] = Query(None, description="Fecha de inicio"),
-    end_date: Optional[datetime] = Query(None, description="Fecha de fin"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros"),
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene eventos de auditoría con filtros
-    Requiere permisos de administrador
-    """
-    try:
-        from ..models.audit import AuditLog
+        # Verificar si el buffer está muy lleno
+        if len(audit_logger.log_buffer) > audit_logger.buffer_size * 0.8:
+            health_data["status"] = "warning"
+            health_data["warning"] = "Audit buffer is getting full"
         
-        query = db.query(AuditLog)
+        # Verificar si está habilitado
+        if not audit_logger.enabled:
+            health_data["status"] = "disabled"
         
-        # Aplicar filtros
-        if action_type:
-            query = query.filter(AuditLog.action_type == action_type)
-        if severity:
-            query = query.filter(AuditLog.severity == severity)
-        if table_name:
-            query = query.filter(AuditLog.table_name == table_name)
-        if start_date:
-            query = query.filter(AuditLog.timestamp >= start_date)
-        if end_date:
-            query = query.filter(AuditLog.timestamp <= end_date)
-        
-        # Obtener resultados ordenados por fecha
-        events = query.order_by(AuditLog.timestamp.desc()).limit(limit).all()
-        
-        return {
-            "events_count": len(events),
-            "filters": {
-                "action_type": action_type,
-                "severity": severity,
-                "table_name": table_name,
-                "start_date": start_date,
-                "end_date": end_date
-            },
-            "events": [
-                {
-                    "id": event.id,
-                    "action_type": event.action_type,
-                    "severity": event.severity,
-                    "timestamp": event.timestamp,
-                    "description": event.description,
-                    "user_id": event.user_id,
-                    "username": event.username,
-                    "user_role": event.user_role,
-                    "table_name": event.table_name,
-                    "record_id": event.record_id,
-                    "ip_address": event.ip_address,
-                    "endpoint": event.endpoint,
-                    "request_method": event.request_method,
-                    "execution_time_ms": event.execution_time_ms,
-                    "old_values": event.old_values,
-                    "new_values": event.new_values,
-                    "additional_data": event.additional_data
-                } for event in events
-            ]
-        }
+        return health_data
         
     except Exception as e:
-        logger.error(
-            "Error al obtener eventos de auditoría",
-            error=str(e)
-        )
+        logger.error(f"Error getting audit health: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error al obtener eventos de auditoría"
+            detail="Error retrieving audit health"
         )

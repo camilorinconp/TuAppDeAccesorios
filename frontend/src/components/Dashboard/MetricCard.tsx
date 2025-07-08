@@ -23,15 +23,15 @@ const MetricCard: React.FC<MetricCardProps> = ({
   color = 'primary',
   onClick
 }) => {
-  const getColorClasses = () => {
-    switch (color) {
-      case 'success': return 'border-l-4 border-l-green-500';
-      case 'warning': return 'border-l-4 border-l-yellow-500';
-      case 'error': return 'border-l-4 border-l-red-500';
-      case 'info': return 'border-l-4 border-l-blue-400';
-      default: return 'border-l-4 border-l-blue-500';
-    }
-  };
+  // const getColorClasses = () => {
+  //   switch (color) {
+  //     case 'success': return 'border-l-4 border-l-green-500';
+  //     case 'warning': return 'border-l-4 border-l-yellow-500';
+  //     case 'error': return 'border-l-4 border-l-red-500';
+  //     case 'info': return 'border-l-4 border-l-blue-400';
+  //     default: return 'border-l-4 border-l-blue-500';
+  //   }
+  // };
 
   return (
     <div 

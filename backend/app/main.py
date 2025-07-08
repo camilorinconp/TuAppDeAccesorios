@@ -1,18 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers import products, distributors, users, auth_router, pos, consignments, reports, cache_admin, metrics, audit, search, performance
+from .routers import products, distributors, users, auth_router, pos, consignments, reports, cache_admin, metrics, audit, search, performance, backup
 # from .routers import celery_jobs  # Comentado temporalmente - falta dependencia celery
 from .config import settings
 from . import models # Importar todos los modelos para que SQLAlchemy los descubra
 from .database import get_db_session_maker
-from .middleware import (
-    ErrorHandlingMiddleware, 
-    PerformanceMiddleware, 
-    ResponseCacheMiddleware,
-    LoggingMiddleware
-)
-from .middleware.security_headers import SecurityHeadersMiddleware, HTTPSRedirectMiddleware, SecurityValidationMiddleware
-from .rate_limiter import RateLimitMiddleware
+# from .middleware import (
+#     ErrorHandlingMiddleware, 
+#     PerformanceMiddleware, 
+#     ResponseCacheMiddleware,
+#     LoggingMiddleware
+# )
+# from .middleware.security_headers import SecurityHeadersMiddleware, HTTPSRedirectMiddleware, SecurityValidationMiddleware
+# from .middleware.audit_middleware import AuditMiddleware, AuthAuditMiddleware
+# from .rate_limiter import RateLimitMiddleware
 from .logging_config import setup_logging
 from .metrics import metrics_registry
 import os
@@ -50,17 +51,19 @@ app.add_middleware(
 )
 
 # Agregar middleware personalizado (orden importante)
-app.add_middleware(HTTPSRedirectMiddleware)  # Primero: redireccionar a HTTPS
-app.add_middleware(SecurityValidationMiddleware)  # Segundo: validaciones de seguridad
-app.add_middleware(SecurityHeadersMiddleware)  # Tercero: headers de seguridad
-app.add_middleware(RateLimitMiddleware)  # Rate limiting antes de otros middlewares
-app.add_middleware(LoggingMiddleware)
-app.add_middleware(PerformanceMiddleware)
-app.add_middleware(ErrorHandlingMiddleware)
+# app.add_middleware(HTTPSRedirectMiddleware)  # Primero: redireccionar a HTTPS
+# app.add_middleware(SecurityValidationMiddleware)  # Segundo: validaciones de seguridad
+# app.add_middleware(SecurityHeadersMiddleware)  # Tercero: headers de seguridad
+# app.add_middleware(RateLimitMiddleware)  # Rate limiting antes de otros middlewares
+# app.add_middleware(AuditMiddleware)  # Auditoría general
+# app.add_middleware(AuthAuditMiddleware)  # Auditoría específica de autenticación
+# app.add_middleware(LoggingMiddleware)
+# app.add_middleware(PerformanceMiddleware)
+# app.add_middleware(ErrorHandlingMiddleware)
 
 # Agregar middleware de caché si está habilitado
-if settings.redis_cache_enabled:
-    app.add_middleware(ResponseCacheMiddleware, cache_ttl=settings.redis_cache_default_ttl)
+# if settings.redis_cache_enabled:
+#     app.add_middleware(ResponseCacheMiddleware, cache_ttl=settings.redis_cache_default_ttl)
 
 # Configuración de la base de datos para la aplicación principal
 SessionLocal, engine = get_db_session_maker(settings.database_url)
@@ -96,6 +99,7 @@ app.include_router(reports.router)
 app.include_router(cache_admin.router)
 app.include_router(metrics.router)
 app.include_router(audit.router)
+app.include_router(backup.router)
 app.include_router(search.router)
 app.include_router(performance.router)
 # app.include_router(celery_jobs.router)  # Comentado temporalmente - falta dependencia celery

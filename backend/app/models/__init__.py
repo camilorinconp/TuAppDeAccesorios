@@ -8,6 +8,7 @@ Incluye modelos de base de datos y auditoría
 """
 
 from .audit import AuditLog, SecurityAlert, LoginAttempt, AuditActionType, AuditSeverity
+from .audit_models import AuditLogEntry
 from .enums import UserRole, LoanStatus
 from .main import (
     Product,
@@ -22,6 +23,7 @@ from .main import (
 __all__ = [
     # Auditoría
     'AuditLog',
+    'AuditLogEntry',
     'SecurityAlert', 
     'LoginAttempt',
     'AuditActionType',

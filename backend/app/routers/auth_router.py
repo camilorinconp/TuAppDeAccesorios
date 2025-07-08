@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
@@ -83,12 +84,8 @@ def login_for_access_token(
     business_metrics.record_user_login(user_id=user.id, user_type="user")
     
     # Log de auditoría
-    logger.business(
-        "user_login",
-        user_id=user.id,
-        username=user.username,
-        login_type="user",
-        session_id=session_id
+    logger.info(
+        f"user_login - user_id: {user.id}, username: {user.username}, login_type: user, session_id: {session_id}"
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
@@ -123,11 +120,8 @@ def login_for_distributor_access_token(
     business_metrics.record_user_login(user_id=distributor.id, user_type="distributor")
     
     # Log de auditoría
-    logger.business(
-        "distributor_login",
-        distributor_id=distributor.id,
-        distributor_name=distributor.name,
-        login_type="distributor"
+    logger.info(
+        f"distributor_login - distributor_id: {distributor.id}, distributor_name: {distributor.name}, login_type: distributor"
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
@@ -157,3 +151,183 @@ async def verify_auth(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated"
         )
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Página de login HTML"""
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>TuAppDeAccesorios - Login</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                margin: 0; 
+                padding: 0; 
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                min-height: 100vh; 
+            }
+            .login-container { 
+                background: white; 
+                padding: 2rem; 
+                border-radius: 10px; 
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                max-width: 400px;
+                width: 90%;
+            }
+            .logo { 
+                text-align: center; 
+                color: #667eea; 
+                margin-bottom: 2rem; 
+                font-size: 1.5rem;
+                font-weight: bold;
+            }
+            .form-group { 
+                margin-bottom: 1rem; 
+            }
+            label { 
+                display: block; 
+                margin-bottom: 0.5rem; 
+                color: #333;
+                font-weight: 500;
+            }
+            input[type="text"], input[type="password"] { 
+                width: 100%; 
+                padding: 0.75rem; 
+                border: 1px solid #ddd; 
+                border-radius: 5px; 
+                box-sizing: border-box;
+                font-size: 1rem;
+            }
+            input[type="text"]:focus, input[type="password"]:focus {
+                outline: none;
+                border-color: #667eea;
+                box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+            }
+            .btn { 
+                background: #667eea; 
+                color: white; 
+                padding: 0.75rem 1.5rem; 
+                border: none; 
+                border-radius: 5px; 
+                cursor: pointer; 
+                width: 100%;
+                font-size: 1rem;
+                font-weight: 500;
+                transition: background 0.3s;
+            }
+            .btn:hover { 
+                background: #5a6fd8; 
+            }
+            .error { 
+                color: #e74c3c; 
+                margin-top: 0.5rem; 
+                display: none;
+            }
+            .success { 
+                color: #27ae60; 
+                margin-top: 0.5rem; 
+                display: none;
+            }
+            .info {
+                background: #e8f4fd;
+                border: 1px solid #bee5eb;
+                color: #0c5460;
+                padding: 1rem;
+                border-radius: 5px;
+                margin-bottom: 1rem;
+                font-size: 0.9rem;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="login-container">
+            <div class="logo">🏪 TuAppDeAccesorios</div>
+            
+            <div class="info">
+                <strong>API Endpoints disponibles:</strong><br>
+                • <a href="/docs" target="_blank">📖 Documentación API</a><br>
+                • <a href="/health" target="_blank">💚 Estado del sistema</a><br>
+                • <a href="/" target="_blank">🏠 Página principal</a>
+            </div>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Usuario:</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Contraseña:</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn">Iniciar Sesión</button>
+                <div id="error" class="error"></div>
+                <div id="success" class="success"></div>
+            </form>
+        </div>
+
+        <script>
+            document.getElementById('loginForm').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                const errorDiv = document.getElementById('error');
+                const successDiv = document.getElementById('success');
+                
+                // Limpiar mensajes
+                errorDiv.style.display = 'none';
+                successDiv.style.display = 'none';
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('username', username);
+                    formData.append('password', password);
+                    
+                    const response = await fetch('/token', {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'include'
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        successDiv.textContent = '¡Login exitoso! Token recibido.';
+                        successDiv.style.display = 'block';
+                        
+                        // Verificar autenticación
+                        setTimeout(async () => {
+                            try {
+                                const verifyResponse = await fetch('/verify', {
+                                    credentials: 'include'
+                                });
+                                if (verifyResponse.ok) {
+                                    const userData = await verifyResponse.json();
+                                    successDiv.textContent = `¡Bienvenido ${userData.user}! Rol: ${userData.role}`;
+                                }
+                            } catch (error) {
+                                console.error('Error verificando:', error);
+                            }
+                        }, 1000);
+                        
+                    } else {
+                        const error = await response.json();
+                        errorDiv.textContent = error.detail || 'Error en el login';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (error) {
+                    errorDiv.textContent = 'Error de conexión: ' + error.message;
+                    errorDiv.style.display = 'block';
+                }
+            });
+        </script>
+    </body>
+    </html>
+    """
+    return html_content

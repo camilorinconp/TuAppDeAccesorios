@@ -1,0 +1,2 @@
+web: cd backend && chmod +x ./scripts/render-startup.sh && ./scripts/render-startup.sh
+release: cd backend && python -m alembic upgrade head

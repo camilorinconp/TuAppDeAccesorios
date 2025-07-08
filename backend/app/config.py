@@ -40,14 +40,29 @@ class Settings(BaseSettings):
     allowed_hosts: str = "localhost,127.0.0.1"
     cors_origins: str = "http://localhost:3000,http://localhost:3001"  # Producción: usar CORS_ORIGINS env var
     
+    # Configuración específica para Render
+    force_https: bool = False
+    secure_cookies: bool = False
+    
     # Rate limiting - configurado para desarrollo y producción
     rate_limit_enabled: bool = True
     rate_limit_requests: int = 100
     rate_limit_window: int = 3600  # 1 hora en segundos
     
-    # SSL/Security
-    force_https: bool = False
-    secure_cookies: bool = False
+    
+    # Configuración de auditoría
+    audit_enabled: bool = True
+    audit_retention_days: int = 365
+    audit_log_sensitive_data: bool = False
+    audit_async_logging: bool = True
+    
+    # Configuración de backups
+    backup_enabled: bool = True
+    backup_local_dir: str = "./backups"
+    backup_retention_days: int = 30
+    backup_encryption_key: str = "default-key-change-in-production"
+    backup_s3_bucket: Optional[str] = None
+    backup_schedule: str = "0 2 * * *"
     
     @property
     def is_production(self) -> bool:
@@ -55,7 +70,7 @@ class Settings(BaseSettings):
     
     @property
     def cookie_secure(self) -> bool:
-        return self.secure_cookies or self.is_production
+        return self.secure_cookies or self.is_production or self.force_https
     
     @property
     def cookie_samesite(self) -> str:

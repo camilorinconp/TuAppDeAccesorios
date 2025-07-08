@@ -1,0 +1,81 @@
+services:
+  # Backend API Service
+  - type: web
+    name: tuapp-backend
+    env: python
+    plan: starter  # Upgrade to standard/pro based on needs
+    buildCommand: |
+      cd backend && 
+      pip install --upgrade pip &&
+      pip install -r requirements.txt
+    startCommand: |
+      cd backend && 
+      chmod +x ./scripts/render-startup.sh && 
+      ./scripts/render-startup.sh
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: PORT
+        value: "8000"
+      - key: WORKERS
+        value: "2"
+      # Security variables (set these in Render dashboard as secrets)
+      - key: SECRET_KEY
+        generateValue: true  # Render will generate a secure value
+      - key: DATABASE_MASTER_KEY
+        generateValue: true
+      - key: BACKUP_ENCRYPTION_KEY
+        generateValue: true
+      # Database will be set via DATABASE_URL by PostgreSQL service
+      # Redis will be set via REDIS_URL by Redis service
+      
+  # PostgreSQL Database
+  - type: pserv
+    name: tuapp-postgres
+    plan: starter  # Free tier available
+    
+  # Redis Cache
+  - type: redis
+    name: tuapp-redis
+    plan: starter  # Free tier available
+    
+databases:
+  - name: tuapp-postgres
+    databaseName: tuapp_production
+    user: tuapp_user
+
+# Environment Groups (optional - for shared configs)
+envVarGroups:
+  - name: tuapp-common
+    envVars:
+      - key: PROJECT_NAME
+        value: TuAppDeAccesorios
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_REQUESTS
+        value: "60"
+      - key: RATE_LIMIT_WINDOW
+        value: "3600"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: REDIS_CACHE_ENABLED
+        value: "true"
+      - key: REDIS_CACHE_DEFAULT_TTL
+        value: "300"
+      - key: AUDIT_ENABLED
+        value: "true"
+      - key: AUDIT_RETENTION_DAYS
+        value: "365"
+      - key: AUDIT_LOG_SENSITIVE_DATA
+        value: "false"
+      - key: BACKUP_ENABLED
+        value: "true"
+      - key: BACKUP_RETENTION_DAYS
+        value: "30"
