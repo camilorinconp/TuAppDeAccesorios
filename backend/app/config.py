@@ -83,32 +83,45 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> List[str]:
         """Configuración dinámica de CORS origins con validaciones de seguridad"""
+        
+        # En producción, priorizar la variable de entorno CORS_ORIGINS
+        if self.is_production:
+            cors_env = os.getenv("CORS_ORIGINS")
+            if cors_env:
+                logger.info(f"Using CORS_ORIGINS from environment: {cors_env}")
+                self.cors_origins = cors_env
+            else:
+                # Si no está definida, intentar usar la URL de Render como fallback
+                render_url = os.getenv("RENDER_EXTERNAL_URL")
+                if render_url:
+                    logger.info(f"CORS_ORIGINS not set, using RENDER_EXTERNAL_URL as fallback: {render_url}")
+                    self.cors_origins = render_url
+                else:
+                    logger.error("CORS_ORIGINS environment variable is not set in production.")
+                    self.cors_origins = ""
+
         try:
             # Parsear origins - puede ser string JSON o separado por comas
             if self.cors_origins.startswith('[') and self.cors_origins.endswith(']'):
-                # Formato JSON desde variables de entorno
                 import json
                 origins = json.loads(self.cors_origins)
             else:
-                # Formato separado por comas
-                origins = [origin.strip() for origin in self.cors_origins.split(",")]
+                origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Error parsing CORS origins: {e}. Using fallback.")
             origins = ["http://localhost:3000", "http://localhost:3001"]
-        
+
         # Validaciones de seguridad para producción
         if self.is_production:
             secure_origins = []
+            render_url = os.getenv("RENDER_EXTERNAL_URL")
+            
             for origin in origins:
-                # Validar formato de URL
-                if not origin or origin.strip() == '':
+                if not origin:
                     continue
-                    
-                # Solo HTTPS en producción (excepto localhost para testing)
-                if origin.startswith('https://') or \
-                   (origin.startswith('http://localhost') and not self.is_production) or \
-                   origin == 'null':
-                    # Validar que no contenga caracteres peligrosos
+                
+                # Permitir HTTPS y la URL de Render
+                if origin.startswith('https://') or (render_url and origin == render_url):
                     if all(c.isalnum() or c in ':/.-_' for c in origin):
                         secure_origins.append(origin)
                     else:
@@ -116,20 +129,13 @@ class Settings(BaseSettings):
                 else:
                     logger.warning(f"Insecure CORS origin removed in production: {origin}")
             
-            # Asegurar que tengamos al menos un origin válido
             if not secure_origins:
-                logger.error("No valid CORS origins found for production!")
-                raise ValueError("No valid CORS origins configured for production")
+                logger.error("No valid HTTPS CORS origins found for production. Frontend requests will be blocked. Please set the CORS_ORIGINS environment variable.")
             
             return secure_origins
         
-        # En desarrollo, ser más permisivo pero con validaciones básicas
-        validated_origins = []
-        for origin in origins:
-            if origin and origin.strip():
-                validated_origins.append(origin.strip())
-        
-        return validated_origins or ["http://localhost:3000", "http://localhost:3001"]
+        # En desarrollo, ser más permisivo
+        return origins or ["http://localhost:3000", "http://localhost:3001"]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
