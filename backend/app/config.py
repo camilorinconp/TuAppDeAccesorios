@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     redis_cache_enabled: bool = True
     redis_cache_default_ttl: int = 300  # 5 minutos por defecto
     
+    # Vault
+    vault_enabled: bool = False
+    
     # CORS y seguridad - configuración dinámica basada en entorno
     allowed_hosts: str = "localhost,127.0.0.1"
     cors_origins: str = "http://localhost:3000,http://localhost:3001"  # Producción: usar CORS_ORIGINS env var
@@ -140,21 +143,25 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        # Obtener secretos sensibles desde Vault si está disponible
-        if VAULT_AVAILABLE:
-            logger.info("Cargando secretos desde Vault")
+        # Priorizar REDIS_URL de Render si existe
+        if redis_url_env := os.getenv("REDIS_URL"):
+            self.redis_url = redis_url_env
+            logger.info(f"Using Redis URL from environment: {self.redis_url}")
+
+        # Obtener secretos sensibles desde Vault si está habilitado y disponible
+        if self.vault_enabled and VAULT_AVAILABLE:
+            logger.info("Vault is enabled, loading secrets from Vault")
             
             # SECRET_KEY desde Vault
             vault_secret_key = get_vault_secret('SECRET_KEY')
             if vault_secret_key:
                 self.secret_key = vault_secret_key
             elif not self.secret_key:
-                logger.warning("SECRET_KEY no encontrado en Vault ni en variables de entorno")
+                logger.warning("SECRET_KEY not found in Vault or environment variables")
             
             # Actualizar URL de base de datos con contraseña desde Vault
             vault_postgres_password = get_vault_secret('POSTGRES_PASSWORD')
             if vault_postgres_password and 'postgresql://' in self.database_url:
-                # Reemplazar contraseña en la URL de conexión
                 db_parts = self.database_url.split('@')
                 if len(db_parts) == 2:
                     user_pass = db_parts[0].split('://')[-1]
@@ -170,8 +177,10 @@ class Settings(BaseSettings):
                     protocol = redis_parts[0]
                     host_port = redis_parts[1]
                     self.redis_url = f"{protocol}://:{vault_redis_password}@{host_port}"
+        elif self.vault_enabled and not VAULT_AVAILABLE:
+            logger.error("Vault is enabled in settings, but the vault module is not available.")
         else:
-            logger.warning("Vault no disponible, usando variables de entorno")
+            logger.info("Vault is not enabled, using environment variables for secrets.")
 
     class Config:
         env_file = ".env"
