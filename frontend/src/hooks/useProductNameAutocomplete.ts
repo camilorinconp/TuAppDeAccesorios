@@ -37,10 +37,13 @@ export const useProductNameAutocomplete = () => {
     try {
       const result = await getProductNameSuggestions(query.trim(), 8);
       
+      // Verificación defensiva para asegurar que result.suggestions sea un array
+      const suggestions = Array.isArray(result?.suggestions) ? result.suggestions : [];
+      
       setState(prev => ({
         ...prev,
-        suggestions: result.suggestions,
-        showSuggestions: result.suggestions.length > 0,
+        suggestions: suggestions,
+        showSuggestions: suggestions.length > 0,
         isLoading: false,
         error: null
       }));

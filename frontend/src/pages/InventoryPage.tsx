@@ -6,6 +6,7 @@ import ProductNameAutocompleteFixed from '../components/ProductNameAutocompleteF
 import PageLayout from '../components/PageLayout';
 import { useProductsApi } from '../hooks/useApiError';
 import { useSkuValidation } from '../hooks/useSkuValidation';
+import { searchProducts } from '../services/api';
 
 const InventoryPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -15,8 +16,19 @@ const InventoryPage: React.FC = () => {
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
     sku: '', name: ''
   });
+  const [priceError, setPriceError] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  
+  // Estados para búsqueda y filtros
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState({
+    minPrice: '',
+    maxPrice: '',
+    minStock: '',
+    maxStock: '',
+    hasStock: false
+  });
   
   // Usar el hook de API con manejo de errores
   const {
@@ -34,26 +46,107 @@ const InventoryPage: React.FC = () => {
 
   useEffect(() => {
     fetchProducts();
-  }, [currentPage]);
+  }, [currentPage, searchTerm, filters]);
 
   const fetchProducts = async () => {
     const skip = (currentPage - 1) * itemsPerPage;
-    const data = await getProducts(skip, itemsPerPage);
     
-    if (data) {
-      if (Array.isArray(data)) {
-        setProducts(data);
-        setProductListData({ products: data, total: data.length, skip: skip, limit: itemsPerPage, has_next: false });
-      } else {
-        setProductListData(data);
-        setProducts(data.products);
+    // Si hay término de búsqueda, usar API de búsqueda
+    if (searchTerm.trim()) {
+      try {
+        const results = await searchProducts(searchTerm.trim());
+        // Aplicar filtros localmente a los resultados de búsqueda
+        const filteredResults = applyLocalFilters(results);
+        // Paginar resultados localmente
+        const paginatedResults = paginateLocally(filteredResults, skip, itemsPerPage);
+        setProducts(paginatedResults.items);
+        setProductListData({
+          products: paginatedResults.items,
+          total: filteredResults.length,
+          skip: skip,
+          limit: itemsPerPage,
+          has_next: skip + itemsPerPage < filteredResults.length
+        });
+      } catch (error) {
+        console.error('Error en búsqueda:', error);
+        setProducts([]);
+        setProductListData(null);
+      }
+    } else {
+      // Sin búsqueda, usar paginación normal del servidor
+      const data = await getProducts(skip, itemsPerPage);
+      
+      if (data) {
+        if (Array.isArray(data)) {
+          const filteredData = applyLocalFilters(data);
+          setProducts(filteredData);
+          setProductListData({ products: filteredData, total: filteredData.length, skip: skip, limit: itemsPerPage, has_next: false });
+        } else {
+          const filteredProducts = applyLocalFilters(data.products || []);
+          setProductListData({
+            ...data,
+            products: filteredProducts
+          });
+          setProducts(filteredProducts);
+        }
       }
     }
+  };
+
+  const applyLocalFilters = (productList: Product[]) => {
+    return productList.filter(product => {
+      // Filtro por precio mínimo
+      if (filters.minPrice && product.selling_price < parseFloat(filters.minPrice)) return false;
+      // Filtro por precio máximo
+      if (filters.maxPrice && product.selling_price > parseFloat(filters.maxPrice)) return false;
+      // Filtro por stock mínimo
+      if (filters.minStock && product.stock_quantity < parseInt(filters.minStock)) return false;
+      // Filtro por stock máximo
+      if (filters.maxStock && product.stock_quantity > parseInt(filters.maxStock)) return false;
+      // Filtro por productos con stock
+      if (filters.hasStock && product.stock_quantity <= 0) return false;
+      
+      return true;
+    });
+  };
+
+  const paginateLocally = (items: Product[], skip: number, limit: number) => {
+    const paginatedItems = items.slice(skip, skip + limit);
+    return {
+      items: paginatedItems,
+      total: items.length,
+      hasNext: skip + limit < items.length
+    };
   };
 
   const handleSkuChange = (sku: string) => {
     setNewProduct({ ...newProduct, sku });
     skuValidation.validateSku(sku);
+  };
+
+  const validatePrices = (costPrice: number, sellingPrice: number) => {
+    if (costPrice > 0 && sellingPrice > 0 && sellingPrice <= costPrice) {
+      setPriceError("El precio de venta debe ser mayor al precio de costo");
+      return false;
+    }
+    setPriceError(null);
+    return true;
+  };
+
+  const handleCostPriceChange = (value: string) => {
+    const costPrice = value ? parseFloat(value) : 0;
+    setNewProduct({ ...newProduct, cost_price: costPrice });
+    if (newProduct.selling_price) {
+      validatePrices(costPrice, newProduct.selling_price);
+    }
+  };
+
+  const handleSellingPriceChange = (value: string) => {
+    const sellingPrice = value ? parseFloat(value) : 0;
+    setNewProduct({ ...newProduct, selling_price: sellingPrice });
+    if (newProduct.cost_price) {
+      validatePrices(newProduct.cost_price, sellingPrice);
+    }
   };
 
   const handleEditSkuChange = (sku: string) => {
@@ -72,17 +165,33 @@ const InventoryPage: React.FC = () => {
       return; // No permitir crear si el SKU no está disponible
     }
     
+    // Validar que el precio de venta sea mayor al precio de costo
+    if (priceError) {
+      return; // No permitir crear si hay error en precios
+    }
+    
     await createProduct(newProduct as Product, () => {
       setSuccess("Producto creado con éxito.");
       setNewProduct({ sku: '', name: '' });
+      setPriceError(null);
       skuValidation.clearValidation();
       
-      // Volver a la primera página después de crear
-      if (currentPage !== 1) {
-        setCurrentPage(1);
-      } else {
+      // Limpiar filtros de búsqueda para mostrar el nuevo producto
+      setSearchTerm('');
+      setFilters({
+        minPrice: '',
+        maxPrice: '',
+        minStock: '',
+        maxStock: '',
+        hasStock: false
+      });
+      
+      // Volver a la primera página y refrescar
+      setCurrentPage(1);
+      // Forzar recarga después de un breve delay para asegurar que el backend procesó la creación
+      setTimeout(() => {
         fetchProducts();
-      }
+      }, 100);
     });
   };
 
@@ -109,6 +218,28 @@ const InventoryPage: React.FC = () => {
     setCurrentPage(page);
     setEditingProduct(null); // Cerrar edición al cambiar página
     editSkuValidation.clearValidation(); // Limpiar validación al cambiar página
+  };
+
+  const handleSearchChange = (term: string) => {
+    setSearchTerm(term);
+    setCurrentPage(1); // Resetear a primera página al buscar
+  };
+
+  const handleFilterChange = (newFilters: typeof filters) => {
+    setFilters(newFilters);
+    setCurrentPage(1); // Resetear a primera página al filtrar
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setFilters({
+      minPrice: '',
+      maxPrice: '',
+      minStock: '',
+      maxStock: '',
+      hasStock: false
+    });
+    setCurrentPage(1);
   };
 
   const totalPages = productListData ? Math.ceil(productListData.total / itemsPerPage) : 1;
@@ -180,13 +311,36 @@ const InventoryPage: React.FC = () => {
           placeholder="Nombre del Producto (ej: Funda iPhone 14)"
           required
         />
-        <input className="input" type="number" placeholder="Precio Costo en COP (ej: 15000)" value={newProduct.cost_price || ''} onChange={e => setNewProduct({ ...newProduct, cost_price: e.target.value ? parseFloat(e.target.value) : 0 })} required />
-        <input className="input" type="number" placeholder="Precio Venta en COP (ej: 25000)" value={newProduct.selling_price || ''} onChange={e => setNewProduct({ ...newProduct, selling_price: e.target.value ? parseFloat(e.target.value) : 0 })} required />
+        <div style={{ position: 'relative' }}>
+          <input 
+            className={`input ${priceError ? 'input-error' : ''}`}
+            type="number" 
+            placeholder="Precio Costo en COP (ej: 15000)" 
+            value={newProduct.cost_price || ''} 
+            onChange={e => handleCostPriceChange(e.target.value)}
+            required 
+          />
+        </div>
+        <div style={{ position: 'relative' }}>
+          <input 
+            className={`input ${priceError ? 'input-error' : ''}`}
+            type="number" 
+            placeholder="Precio Venta en COP (ej: 25000)" 
+            value={newProduct.selling_price || ''} 
+            onChange={e => handleSellingPriceChange(e.target.value)}
+            required 
+          />
+          {priceError && (
+            <small style={{ color: '#dc3545', display: 'block', marginTop: '2px' }}>
+              ❌ {priceError}
+            </small>
+          )}
+        </div>
         <input className="input" type="number" placeholder="Cantidad en Stock (ej: 50)" value={newProduct.stock_quantity || ''} onChange={e => setNewProduct({ ...newProduct, stock_quantity: e.target.value ? parseInt(e.target.value) : 0 })} required />
         <div className="form-grid-full">
           <button 
             type="submit" 
-            disabled={isLoading || skuValidation.isAvailable === false || skuValidation.isValidating}
+            disabled={isLoading || skuValidation.isAvailable === false || skuValidation.isValidating || !!priceError}
             className={`btn mobile-full ${skuValidation.isAvailable === false ? 'btn-ghost' : 'btn-primary'}`}
           >
             {isLoading ? 'Creando...' : 
@@ -203,10 +357,80 @@ const InventoryPage: React.FC = () => {
           <h2>Lista de Productos</h2>
           {productListData && (
             <div style={{ fontSize: '14px', color: 'var(--text-tertiary)' }}>
-              Mostrando {products.length} de {productListData.total} productos
+              Mostrando {products?.length || 0} de {productListData.total} productos
+              {searchTerm && ` (filtrado por: "${searchTerm}")`}
             </div>
           )}
         </div>
+        
+        {/* Sección de Búsqueda y Filtros */}
+        <div className="card-body" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '20px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+            {/* Campo de búsqueda principal */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <input
+                type="text"
+                placeholder="🔍 Buscar por nombre o SKU..."
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="input"
+                style={{ width: '100%' }}
+              />
+            </div>
+            
+            {/* Filtros de precio */}
+            <input
+              type="number"
+              placeholder="Precio mínimo"
+              value={filters.minPrice}
+              onChange={(e) => handleFilterChange({ ...filters, minPrice: e.target.value })}
+              className="input"
+            />
+            <input
+              type="number"
+              placeholder="Precio máximo"
+              value={filters.maxPrice}
+              onChange={(e) => handleFilterChange({ ...filters, maxPrice: e.target.value })}
+              className="input"
+            />
+            
+            {/* Filtros de stock */}
+            <input
+              type="number"
+              placeholder="Stock mínimo"
+              value={filters.minStock}
+              onChange={(e) => handleFilterChange({ ...filters, minStock: e.target.value })}
+              className="input"
+            />
+            <input
+              type="number"
+              placeholder="Stock máximo"
+              value={filters.maxStock}
+              onChange={(e) => handleFilterChange({ ...filters, maxStock: e.target.value })}
+              className="input"
+            />
+            
+            {/* Checkbox para productos con stock */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+              <input
+                type="checkbox"
+                checked={filters.hasStock}
+                onChange={(e) => handleFilterChange({ ...filters, hasStock: e.target.checked })}
+              />
+              Solo con stock
+            </label>
+            
+            {/* Botón limpiar filtros */}
+            <button
+              onClick={clearFilters}
+              className="btn btn-ghost"
+              style={{ padding: '8px 16px' }}
+            >
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+        
         <div className="card-body">
           {isLoading && (
             <div style={{ textAlign: 'center', padding: '20px' }}>

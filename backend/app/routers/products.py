@@ -7,7 +7,9 @@ from .. import crud, schemas, models
 from ..dependencies import get_db, get_current_admin_user
 from ..metrics import business_metrics
 from ..logging_config import get_secure_logger
-from ..security.input_validation import InputValidator, validate_query_param
+from ..security.input_validation import validate_search_term
+from ..cache_decorators import cache_products_list, cache_product_search, invalidate_products_cache
+from ..pagination import PaginationParams, create_paginated_response, paginate_products
 
 router = APIRouter()
 logger = get_secure_logger(__name__)
@@ -16,78 +18,183 @@ logger = get_secure_logger(__name__)
 def create_product(product: schemas.ProductCreate, request: Request, db: Session = Depends(get_db)):
     """Crear un nuevo producto con validación robusta"""
     
-    # Validar y sanitizar inputs
-    try:
-        # Validar nombre del producto
-        if product.name:
-            product.name = InputValidator.validate_input(product.name, 'name', max_length=255)
-        
-        # Validar SKU
-        if product.sku:
-            product.sku = InputValidator.validate_input(product.sku, 'sku', max_length=50)
-        
-        # Validar descripción
-        if product.description:
-            product.description = InputValidator.validate_input(product.description, 'description', max_length=1000)
-        
-        # Validar categoría
-        if product.category:
-            product.category = InputValidator.validate_input(product.category, 'name', max_length=100)
-        
-        # Validaciones de negocio
-        if product.selling_price <= 0:
-            raise HTTPException(status_code=400, detail="El precio de venta debe ser mayor a 0")
-        
-        if product.cost_price < 0:
-            raise HTTPException(status_code=400, detail="El precio de costo no puede ser negativo")
-        
-        if product.stock_quantity < 0:
-            raise HTTPException(status_code=400, detail="La cantidad en stock no puede ser negativa")
-        
-    except HTTPException as e:
-        logger.warning(
-            f"Invalid product data provided",
-            client_ip=request.client.host,
-            user_agent=request.headers.get("user-agent"),
-            error_detail=e.detail
+    # Las validaciones de input y sanitización ahora se manejan en el esquema Pydantic (schemas.ProductCreate)
+    # Las validaciones de negocio específicas que no son de formato/seguridad se mantienen aquí
+    
+    # Validaciones de negocio
+    
+    # 1. Verificar que el SKU no existe
+    existing_product = db.query(models.Product).filter(models.Product.sku == product.sku).first()
+    if existing_product:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Ya existe un producto con el SKU '{product.sku}'. Los SKUs deben ser únicos."
         )
-        raise e
-    except Exception as e:
-        logger.error(f"Error validating product data: {e}")
-        raise HTTPException(status_code=400, detail="Datos del producto inválidos")
+    
+    # 2. Validar precios
+    if product.selling_price <= product.cost_price:
+        raise HTTPException(status_code=400, detail="El precio de venta no puede ser menor o igual al precio de costo")
     
     # Crear producto
     db_product = crud.create_product(db=db, product=product)
     
-    # Registrar métricas de negocio
-    business_metrics.record_product_created()
+    # Invalidar cache de productos
+    try:
+        invalidate_products_cache()
+    except Exception as e:
+        print(f"Error en cache: {e}")
     
-    # Log de auditoría
-    logger.business(
-        "product_created",
-        product_id=db_product.id,
-        product_name=db_product.name,
-        product_sku=db_product.sku,
-        stock_quantity=db_product.stock_quantity,
-        selling_price=float(db_product.selling_price)
-    )
+    # Registrar métricas de negocio
+    try:
+        business_metrics.record_product_created()
+    except Exception as e:
+        print(f"Error en métricas: {e}")
+    
+    # Log de auditoría (comentado temporalmente para debug)
+    # logger.business(
+    #     "product_created",
+    #     product_id=db_product.id,
+    #     product_name=db_product.name,
+    #     product_sku=db_product.sku,
+    #     stock_quantity=db_product.stock_quantity,
+    #     selling_price=float(db_product.selling_price)
+    # )
     
     return db_product
 
-@router.get("/products/", response_model=schemas.ProductList)
-def read_products(
-    skip: int = Query(0, ge=0, description="Número de productos a omitir"),
-    limit: int = Query(20, ge=1, le=100, description="Número máximo de productos por página"),
+@router.post("/products/duplicate/{product_id}", response_model=schemas.Product, dependencies=[Depends(get_current_admin_user)])
+async def duplicate_product(
+    product_id: int,
+    new_sku: str,
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    products = crud.get_products(db, skip=skip, limit=limit)
-    total = crud.get_products_count(db)
+    """Duplicar un producto existente con nuevo SKU"""
+    
+    # Validar nuevo SKU
+    validated_sku = validate_search_term(new_sku.strip().upper())
+    
+    # Verificar que el nuevo SKU no existe
+    existing_sku = db.query(models.Product).filter(models.Product.sku == validated_sku).first()
+    if existing_sku:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ya existe un producto con el SKU '{validated_sku}'"
+        )
+    
+    # Obtener producto original
+    original_product = db.query(models.Product).filter(models.Product.id == product_id).first()
+    if not original_product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # Crear nuevo producto con los mismos datos pero nuevo SKU
+    new_product_data = schemas.ProductCreate(
+        sku=validated_sku,
+        name=original_product.name,
+        description=original_product.description,
+        image_url=original_product.image_url,
+        cost_price=original_product.cost_price,
+        selling_price=original_product.selling_price,
+        stock_quantity=0  # Iniciar con stock 0
+    )
+    
+    # Crear producto
+    db_product = crud.create_product(db=db, product=new_product_data)
+    
+    # Invalidar cache
+    try:
+        invalidate_products_cache()
+    except Exception as e:
+        print(f"Error en cache: {e}")
+    
+    return db_product
+
+@router.get("/products/check-sku/{sku}")
+async def check_sku_availability(sku: str, db: Session = Depends(get_db)):
+    """Verificar si un SKU está disponible"""
+    # Validar SKU con input validator
+    validated_sku = validate_search_term(sku.strip().upper())
+    
+    existing_product = db.query(models.Product).filter(models.Product.sku == validated_sku).first()
+    
     return {
-        "products": products,
-        "total": total,
-        "skip": skip,
-        "limit": limit,
-        "has_next": skip + limit < total
+        "sku": validated_sku,
+        "available": existing_product is None,
+        "exists": existing_product is not None,
+        "message": "SKU disponible" if existing_product is None else f"SKU '{validated_sku}' ya existe",
+        "existing_product": {
+            "id": existing_product.id,
+            "name": existing_product.name,
+            "sku": existing_product.sku
+        } if existing_product else None
+    }
+
+@router.get("/products/")
+@cache_products_list()
+async def read_products(
+    request: Request,
+    page: int = Query(1, ge=1, description="Número de página (empezando desde 1)"),
+    per_page: int = Query(20, ge=1, le=100, description="Elementos por página (máximo 100)"),
+    search: Optional[str] = Query(None, description="Búsqueda por nombre, descripción, marca o código"),
+    category: Optional[str] = Query(None, description="Filtrar por categoría"),
+    is_active: bool = Query(True, description="Mostrar solo productos activos"),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtener lista paginada de productos con filtros y búsqueda optimizada
+    """
+    
+    # Usar paginación optimizada
+    products, total = paginate_products(
+        db=db,
+        page=page,
+        per_page=per_page,
+        search=search,
+        category=category,
+        is_active=is_active
+    )
+    
+    # Convertir a esquemas Pydantic
+    products_data = [schemas.Product.from_orm(product) for product in products]
+    
+    # Crear respuesta paginada
+    return create_paginated_response(
+        items=products_data,
+        total=total,
+        page=page,
+        per_page=per_page
+    )
+
+@router.get("/products/suggest-names")
+@cache_product_search()
+async def suggest_product_names(
+    request: Request,
+    q: str = Query(..., min_length=1, description="Término de búsqueda para autocompletado"),
+    limit: int = Query(10, ge=1, le=20, description="Número máximo de sugerencias"),
+    db: Session = Depends(get_db)
+):
+    """Obtener sugerencias de nombres de productos para autocompletado"""
+    
+    # Validar término de búsqueda
+    search_term = validate_search_term(q.strip())
+    
+    # Buscar productos que coincidan
+    products = db.query(models.Product).filter(
+        models.Product.name.ilike(f"%{search_term}%")
+    ).order_by(models.Product.name.asc()).limit(limit).all()
+    
+    # Retornar solo nombres únicos para autocompletado simple
+    unique_names = set()
+    suggestions = []
+    for product in products:
+        if product.name not in unique_names:
+            unique_names.add(product.name)
+            suggestions.append(product.name)
+    
+    return {
+        "suggestions": suggestions,
+        "count": len(suggestions),
+        "search_term": search_term
     }
 
 @router.get("/products/search", response_model=List[schemas.Product])
@@ -99,143 +206,21 @@ def search_products(
 ):
     """Buscar productos por nombre o SKU con full-text search y seguridad anti-SQL injection"""
     
+    # La validación de 'q' ahora se maneja directamente por Pydantic en el Query
+    # y por InputValidator a través de la función validate_search_term si se usa.
+    from ..security.input_validation import validate_search_term
+    search_term_validated = validate_search_term(q) # Asegura que el término de búsqueda sea seguro
+
     if use_fulltext:
         # Usar búsqueda full-text avanzada
         from ..utils.search import search_products_fulltext
-        products = search_products_fulltext(db, query=q, limit=limit)
+        products = search_products_fulltext(db, query=search_term_validated, limit=limit)
     else:
         # Usar búsqueda con métricas (método anterior)
-        products = crud.search_products_with_metrics(db, query=q, limit=limit)
+        products = crud.search_products_with_metrics(db, query=search_term_validated, limit=limit)
     
     return products
 
-@router.get("/products/check-sku/{sku}")
-def check_sku_availability(sku: str, db: Session = Depends(get_db)):
-    """Verificar si un SKU ya existe en el inventario"""
-    # Normalizar el SKU (mayúsculas y sin espacios)
-    normalized_sku = sku.strip().upper()
-    
-    # Buscar producto con este SKU
-    existing_product = db.query(models.Product).filter(models.Product.sku == normalized_sku).first()
-    
-    return {
-        "sku": normalized_sku,
-        "available": existing_product is None,
-        "exists": existing_product is not None,
-        "message": "SKU disponible" if existing_product is None else f"SKU '{normalized_sku}' ya existe"
-    }
-
-@router.get("/products/suggest-names")
-def suggest_product_names(
-    q: str = Query(..., min_length=2, description="Término de búsqueda para autocompletado"),
-    limit: int = Query(8, ge=1, le=20, description="Número máximo de sugerencias"),
-    db: Session = Depends(get_db)
-):
-    """Obtener sugerencias de nombres de productos para autocompletado"""
-    # Validar y sanitizar input para prevenir SQL injection
-    from ..security.input_validation import validate_search_term
-    
-    try:
-        search_term = validate_search_term(q.strip(), max_length=50)
-    except HTTPException as e:
-        raise e
-    
-    # Buscar productos que contengan el término en el nombre (usando parámetros seguros)
-    existing_names = db.query(models.Product.name).filter(
-        models.Product.name.ilike(f"%{search_term}%")
-    ).distinct().limit(limit).all()
-    
-    suggestions = [name[0] for name in existing_names]
-    
-    # Agregar sugerencias comunes basadas en categorías de accesorios
-    common_suggestions = get_common_product_suggestions(search_term)
-    
-    # Combinar y eliminar duplicados manteniendo el orden
-    all_suggestions = suggestions + [s for s in common_suggestions if s not in suggestions]
-    
-    return {
-        "query": q,
-        "suggestions": all_suggestions[:limit]
-    }
-
-def get_common_product_suggestions(search_term: str) -> list[str]:
-    """Obtener sugerencias comunes basadas en categorías de accesorios para celulares"""
-    
-    # Diccionario de categorías y productos comunes
-    categories = {
-        "funda": [
-            "Funda iPhone 14", "Funda iPhone 13", "Funda iPhone 12", "Funda Samsung Galaxy",
-            "Funda Transparente", "Funda con Soporte", "Funda Cuero", "Funda Silicona"
-        ],
-        "case": [
-            "Case iPhone 14", "Case iPhone 13", "Case Samsung", "Case Transparente",
-            "Case con Soporte", "Case Protector"
-        ],
-        "protector": [
-            "Protector Pantalla", "Protector Templado", "Protector iPhone", "Protector Samsung",
-            "Protector Cámara", "Protector Privacidad"
-        ],
-        "cargador": [
-            "Cargador iPhone", "Cargador Samsung", "Cargador Rápido", "Cargador Inalámbrico",
-            "Cargador USB-C", "Cargador Lightning", "Cargador Portátil"
-        ],
-        "cable": [
-            "Cable USB-C", "Cable Lightning", "Cable Micro USB", "Cable Carga Rápida",
-            "Cable iPhone", "Cable Samsung", "Cable Datos"
-        ],
-        "audífono": [
-            "Audífonos Bluetooth", "Audífonos Inalámbricos", "Audífonos iPhone",
-            "Audífonos Samsung", "Audífonos Gaming", "Audífonos Deportivos"
-        ],
-        "auricular": [
-            "Auriculares Bluetooth", "Auriculares Inalámbricos", "Auriculares Gaming",
-            "Auriculares Deportivos", "Auriculares con Micrófono"
-        ],
-        "soporte": [
-            "Soporte Celular", "Soporte Auto", "Soporte Mesa", "Soporte Anillo",
-            "Soporte Magnético", "Soporte Escritorio"
-        ],
-        "batería": [
-            "Batería Externa", "Batería Portátil", "Power Bank", "Batería iPhone",
-            "Batería Samsung", "Batería Inalámbrica"
-        ],
-        "memoria": [
-            "Memoria USB", "Memoria MicroSD", "Memoria Externa", "Tarjeta SD"
-        ],
-        "adaptador": [
-            "Adaptador USB-C", "Adaptador Lightning", "Adaptador Audio",
-            "Adaptador Carga", "Adaptador OTG"
-        ],
-        "mouse": [
-            "Mouse Inalámbrico", "Mouse Bluetooth", "Mouse Gaming", "Mouse Óptico",
-            "Mouse Portátil", "Mouse Ergonómico"
-        ],
-        "teclado": [
-            "Teclado Bluetooth", "Teclado Inalámbrico", "Teclado Gaming",
-            "Teclado Mecánico", "Teclado Portátil"
-        ]
-    }
-    
-    suggestions = []
-    
-    # Buscar en todas las categorías
-    for category, items in categories.items():
-        if category in search_term or search_term in category:
-            suggestions.extend(items)
-    
-    # También buscar por coincidencias parciales en los nombres
-    for category, items in categories.items():
-        for item in items:
-            if search_term in item.lower():
-                suggestions.append(item)
-    
-    # Eliminar duplicados manteniendo el orden
-    unique_suggestions = []
-    for suggestion in suggestions:
-        if suggestion not in unique_suggestions:
-            unique_suggestions.append(suggestion)
-    
-    return unique_suggestions[:8]
 
 @router.get("/products/{product_id}", response_model=schemas.Product)
 def read_product(product_id: int, db: Session = Depends(get_db)):
@@ -253,14 +238,14 @@ def update_product(product_id: int, product: schemas.ProductUpdate, db: Session 
     # Registrar métricas de negocio
     business_metrics.record_product_updated()
     
-    # Log de auditoría
-    logger.business(
-        "product_updated",
-        product_id=db_product.id,
-        product_name=db_product.name,
-        product_sku=db_product.sku,
-        stock_quantity=db_product.stock_quantity,
-        selling_price=float(db_product.selling_price)
-    )
+    # Log de auditoría (temporalmente deshabilitado - logger.business no existe)
+    # logger.business(
+    #     "product_updated",
+    #     product_id=db_product.id,
+    #     product_name=db_product.name,
+    #     product_sku=db_product.sku,
+    #     stock_quantity=db_product.stock_quantity,
+    #     selling_price=float(db_product.selling_price)
+    # )
     
     return db_product

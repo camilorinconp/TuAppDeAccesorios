@@ -4,6 +4,234 @@ import ErrorNotification from '../components/ErrorNotification';
 import { useApiError } from '../hooks/useApiError';
 import { apiRequest } from '../services/api';
 
+// Estilos modernos
+const modernStyles = {
+  container: {
+    padding: '24px',
+    backgroundColor: '#f8fafc',
+    minHeight: '100vh',
+    fontFamily: 'system-ui, -apple-system, sans-serif'
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '32px',
+    padding: '0 8px'
+  },
+  title: {
+    fontSize: '2rem',
+    fontWeight: '700',
+    color: '#1e293b',
+    margin: 0,
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px'
+  },
+  createButton: {
+    padding: '12px 24px',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
+    transition: 'all 0.2s ease',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  createButtonHover: {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 6px 20px rgba(102, 126, 234, 0.6)'
+  },
+  formContainer: {
+    marginBottom: '32px',
+    background: 'white',
+    padding: '32px',
+    borderRadius: '16px',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
+    border: '1px solid #e2e8f0'
+  },
+  formTitle: {
+    fontSize: '1.25rem',
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: '24px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  formGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '20px'
+  },
+  inputGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
+  },
+  label: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: '4px'
+  },
+  input: {
+    padding: '12px 16px',
+    borderRadius: '8px',
+    border: '1px solid #d1d5db',
+    fontSize: '14px',
+    transition: 'all 0.2s ease',
+    backgroundColor: 'white'
+  },
+  inputFocus: {
+    borderColor: '#667eea',
+    outline: 'none',
+    boxShadow: '0 0 0 3px rgba(102, 126, 234, 0.1)'
+  },
+  select: {
+    padding: '12px 16px',
+    borderRadius: '8px',
+    border: '1px solid #d1d5db',
+    fontSize: '14px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease'
+  },
+  helpText: {
+    fontSize: '12px',
+    color: '#6b7280',
+    marginTop: '4px'
+  },
+  submitButton: {
+    padding: '12px 24px',
+    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    gridColumn: '1 / -1',
+    justifySelf: 'flex-end',
+    width: 'fit-content'
+  },
+  cancelButton: {
+    padding: '12px 24px',
+    background: '#6b7280',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    marginRight: '12px'
+  },
+  card: {
+    background: 'white',
+    borderRadius: '16px',
+    padding: '24px',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)',
+    border: '1px solid #e2e8f0'
+  },
+  summaryCard: {
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    color: 'white',
+    padding: '24px',
+    borderRadius: '16px',
+    marginTop: '20px'
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    overflow: 'hidden',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+  },
+  tableHeader: {
+    backgroundColor: '#f8fafc',
+    borderBottom: '1px solid #e2e8f0'
+  },
+  tableHeaderCell: {
+    padding: '16px',
+    textAlign: 'left',
+    fontWeight: '600',
+    color: '#374151',
+    fontSize: '14px'
+  },
+  tableCell: {
+    padding: '16px',
+    borderBottom: '1px solid #f1f5f9',
+    fontSize: '14px',
+    color: '#4b5563'
+  },
+  statusBadge: {
+    padding: '4px 12px',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px'
+  },
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '16px',
+    marginTop: '32px'
+  },
+  statCard: {
+    padding: '20px',
+    borderRadius: '12px',
+    textAlign: 'center',
+    position: 'relative',
+    overflow: 'hidden'
+  },
+  statNumber: {
+    fontSize: '2rem',
+    fontWeight: '700',
+    margin: '8px 0'
+  },
+  statLabel: {
+    fontSize: '14px',
+    fontWeight: '600',
+    margin: 0
+  },
+  distributorSection: {
+    marginTop: '32px',
+    background: 'white',
+    borderRadius: '16px',
+    padding: '24px',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+  },
+  distributorGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+    gap: '16px',
+    marginTop: '20px'
+  },
+  distributorCard: {
+    padding: '20px',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    backgroundColor: '#f8fafc',
+    transition: 'all 0.2s ease'
+  },
+  distributorCardHover: {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+  }
+};
+
 const ConsignmentLoansPage: React.FC = () => {
   const [loans, setLoans] = useState<ConsignmentLoan[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -14,8 +242,15 @@ const ConsignmentLoansPage: React.FC = () => {
     product_id: '',
     quantity_loaned: '',
     loan_date: new Date().toISOString().split('T')[0],
-    return_due_date: '',
+    return_due_date: new Date().toISOString().split('T')[0], // Fecha por defecto: hoy
     status: 'en_prestamo'
+  });
+  const [showDistributorForm, setShowDistributorForm] = useState(false);
+  const [newDistributor, setNewDistributor] = useState({
+    name: '',
+    contact_person: '',
+    phone_number: '',
+    access_code: ''
   });
   const [success, setSuccess] = useState<string | null>(null);
   
@@ -81,7 +316,7 @@ const ConsignmentLoansPage: React.FC = () => {
         product_id: '',
         quantity_loaned: '',
         loan_date: new Date().toISOString().split('T')[0],
-        return_due_date: '',
+        return_due_date: new Date().toISOString().split('T')[0], // Resetear con fecha actual
         status: 'en_prestamo'
       });
       setShowCreateForm(false);
@@ -116,23 +351,76 @@ const ConsignmentLoansPage: React.FC = () => {
 
   const selectedProduct = products.find(p => p.id === parseInt(newLoan.product_id));
 
+  const handleCreateDistributor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    await executeWithErrorHandling(async () => {
+      // Generar código de acceso si no se proporciona
+      const accessCode = newDistributor.access_code || 
+        `DIST${String(Date.now()).slice(-4)}`;
+      
+      const distributorData = {
+        ...newDistributor,
+        access_code: accessCode
+      };
+      
+      await apiRequest('/distributors/', {
+        method: 'POST',
+        body: JSON.stringify(distributorData)
+      });
+      
+      setSuccess('Distribuidor creado exitosamente');
+      setNewDistributor({
+        name: '',
+        contact_person: '',
+        phone_number: '',
+        access_code: ''
+      });
+      setShowDistributorForm(false);
+      await fetchData(); // Refrescar datos
+    });
+  };
+
   return (
-    <div style={{ padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>🏪 Gestión de Préstamos de Consignación</h1>
-        <button 
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#28a745',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          {showCreateForm ? 'Cancelar' : '+ Crear Préstamo'}
-        </button>
+    <div style={modernStyles.container}>
+      <div style={modernStyles.header}>
+        <h1 style={modernStyles.title}>
+          🏪 Gestión de Préstamos de Consignación
+        </h1>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button 
+            onClick={() => setShowDistributorForm(!showDistributorForm)}
+            style={{
+              ...modernStyles.createButton,
+              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(245, 158, 11, 0.6)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.4)';
+            }}
+          >
+            👥 {showDistributorForm ? 'Cancelar' : 'Gestionar Distribuidores'}
+          </button>
+          <button 
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            style={modernStyles.createButton}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
+            }}
+          >
+            ➕ {showCreateForm ? 'Cancelar' : 'Crear Préstamo'}
+          </button>
+        </div>
       </div>
       
       {/* Notificación de error */}

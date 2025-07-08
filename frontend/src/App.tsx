@@ -9,9 +9,11 @@ import POSPage from './pages/POSClean';
 import DistributorPortalPage from './pages/DistributorPortalPage';
 import ConsignmentLoansPage from './pages/ConsignmentLoansPage';
 import TestNavigation from './pages/TestNavigation';
+import LoginTest from './pages/LoginTest';
 import { useReduxAuth } from './hooks/useReduxAuth';
 import ErrorBoundary from './components/ErrorBoundary';
 import MobileNavigation from './components/MobileNavigation';
+import SimplePrivateRoute from './components/SimplePrivateRoute';
 import './styles/variables.css';
 import './styles/base.css';
 import './styles/components.css';
@@ -62,10 +64,11 @@ function AppContent() {
       <main>
         <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/login-test" element={<LoginTest />} />
             <Route path="/distributor-portal" element={<DistributorPortalPage />} />
             <Route path="/pos-test" element={<POSPage />} />
             <Route path="/test" element={<TestNavigation />} />
-            <Route path="/" element={<Navigate to="/test" />} />
+            <Route path="/" element={<Navigate to="/login" />} />
             <Route
               path="/dashboard"
               element={
@@ -77,9 +80,9 @@ function AppContent() {
             <Route
               path="/inventory"
               element={
-                <PrivateRoute>
+                <SimplePrivateRoute>
                   <InventoryPage />
-                </PrivateRoute>
+                </SimplePrivateRoute>
               }
             />
             <Route

@@ -17,9 +17,6 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     # Base de datos
     database_url: str
-    postgres_user: Optional[str] = None
-    postgres_password: Optional[str] = None
-    postgres_db: Optional[str] = None
     
     # Seguridad JWT - usar Vault si está disponible
     secret_key: str = None

@@ -456,7 +456,6 @@ async def cleanup_old_backups(
 
 @router.get("/download/{backup_id}")
 @secure_endpoint(max_requests_per_hour=3, require_admin=True)
-@admin_required
 async def download_backup(
     request: Request,
     backup_id: str,

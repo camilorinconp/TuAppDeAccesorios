@@ -13,7 +13,7 @@ from .database import get_db_session_maker
 # )
 # from .middleware.security_headers import SecurityHeadersMiddleware, HTTPSRedirectMiddleware, SecurityValidationMiddleware
 # from .middleware.audit_middleware import AuditMiddleware, AuthAuditMiddleware
-# from .rate_limiter import RateLimitMiddleware
+from .rate_limiter import RateLimitMiddleware
 from .logging_config import setup_logging
 from .metrics import metrics_registry
 import os
@@ -54,7 +54,7 @@ app.add_middleware(
 # app.add_middleware(HTTPSRedirectMiddleware)  # Primero: redireccionar a HTTPS
 # app.add_middleware(SecurityValidationMiddleware)  # Segundo: validaciones de seguridad
 # app.add_middleware(SecurityHeadersMiddleware)  # Tercero: headers de seguridad
-# app.add_middleware(RateLimitMiddleware)  # Rate limiting antes de otros middlewares
+app.add_middleware(RateLimitMiddleware)  # Rate limiting habilitado con configuración permisiva
 # app.add_middleware(AuditMiddleware)  # Auditoría general
 # app.add_middleware(AuthAuditMiddleware)  # Auditoría específica de autenticación
 # app.add_middleware(LoggingMiddleware)

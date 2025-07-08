@@ -91,15 +91,7 @@ def create_product(db: Session, product: schemas.ProductCreate):
     if existing_product:
         raise DuplicateError(f"❌ SKU duplicado: Ya existe un producto con el código '{product.sku}'. Cada producto debe tener un SKU único en el inventario.")
     
-    # Validaciones de negocio
-    if product.cost_price < 0:
-        raise ValidationError("El precio de costo no puede ser negativo")
-    if product.selling_price < 0:
-        raise ValidationError("El precio de venta no puede ser negativo")
-    if product.stock_quantity < 0:
-        raise ValidationError("La cantidad de stock no puede ser negativa")
-    if product.selling_price < product.cost_price:
-        raise ValidationError("El precio de venta no puede ser menor al precio de costo")
+    # Las validaciones de negocio (precios, stock) ahora se manejan en el esquema Pydantic
     
     try:
         db_product = models.Product(**product.dict())
@@ -126,17 +118,12 @@ def update_product(db: Session, product_id: int, product_update: schemas.Product
         if existing_product:
             raise DuplicateError(f"❌ SKU duplicado: Ya existe otro producto con el código '{update_data['sku']}'. Cada producto debe tener un SKU único en el inventario.")
     
-    if 'cost_price' in update_data and update_data['cost_price'] < 0:
-        raise ValidationError("El precio de costo no puede ser negativo")
-    if 'selling_price' in update_data and update_data['selling_price'] < 0:
-        raise ValidationError("El precio de venta no puede ser negativo")
-    if 'stock_quantity' in update_data and update_data['stock_quantity'] < 0:
-        raise ValidationError("La cantidad de stock no puede ser negativa")
+    # Las validaciones de negocio (precios, stock) ahora se manejan en el esquema Pydantic
     
     # Validar que precio de venta >= precio de costo
     new_cost = update_data.get('cost_price', db_product.cost_price)
     new_selling = update_data.get('selling_price', db_product.selling_price)
-    if new_selling < new_cost:
+    if new_selling is not None and new_cost is not None and new_selling < new_cost:
         raise ValidationError("El precio de venta no puede ser menor al precio de costo")
     
     try:
@@ -152,12 +139,15 @@ def update_product(db: Session, product_id: int, product_update: schemas.Product
 
 # Funciones CRUD para Distributor
 def get_distributor(db: Session, distributor_id: int):
-    return db.query(models.Distributor).filter(models.Distributor.id == distributor_id).first()
+    distributor = db.query(models.Distributor).filter(models.Distributor.id == distributor_id).first()
+    if not distributor:
+        raise NotFoundError(f"Distribuidor con ID {distributor_id} no encontrado")
+    return distributor
 
 def get_distributor_by_access_code(db: Session, access_code: str):
     distributor = db.query(models.Distributor).filter(models.Distributor.access_code == access_code).first()
-    if not distributor:
-        raise NotFoundError("Distribuidor no encontrado con el código de acceso proporcionado")
+    if not distributor or not security.verify_password(access_code, distributor.access_code):
+        raise NotFoundError("Código de acceso o distribuidor incorrecto")
     return distributor
 
 @cached(expire=CacheConfig.DISTRIBUTORS_TTL, key_prefix="distributors")

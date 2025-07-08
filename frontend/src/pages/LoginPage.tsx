@@ -4,7 +4,7 @@ import { useReduxAuth } from '../hooks/useReduxAuth';
 
 const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [password, setPassword] = useState('admin');
   const { login, isLoading, error: authError } = useReduxAuth();
   const navigate = useNavigate();
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Product, SalePayload } from '../types';
 import { searchProducts, postSale } from '../services/api';
-import { useCartState } from '../hooks/useCartState';
+// import { useCartState } from '../hooks/useCartState'; // Temporarily disabled - useCartState is deprecated
 import CartDisplay from '../components/CartDisplay';
 
 const POSPage: React.FC = () => {
@@ -12,7 +12,9 @@ const POSPage: React.FC = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [isProcessingSale, setIsProcessingSale] = useState(false);
     
-    const { cart, addToCart, removeFromCart, clearCart, totalAmount } = useCartState();
+    // const { cart, addToCart, removeFromCart, clearCart, totalAmount } = useCartState(); // Temporarily disabled
+    const [cart, setCart] = useState<Product[]>([]);
+    const [totalAmount, setTotalAmount] = useState(0);
 
     useEffect(() => {
         // Cart updated

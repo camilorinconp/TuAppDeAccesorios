@@ -5,8 +5,7 @@ from sqlalchemy.orm import Session
 from .. import crud, schemas, models
 from ..dependencies import get_db, get_current_admin_user
 from ..logging_config import get_secure_logger
-from ..security.endpoint_security import secure_endpoint, admin_required, validate_json_input
-from ..security.input_validation import InputValidator
+from ..security.endpoint_security import secure_endpoint, validate_json_input
 
 router = APIRouter()
 logger = get_secure_logger(__name__)
@@ -14,39 +13,10 @@ logger = get_secure_logger(__name__)
 @router.post("/users/", response_model=schemas.User, dependencies=[Depends(get_current_admin_user)])
 @secure_endpoint(max_requests_per_hour=20, require_admin=True, log_access=True)
 @validate_json_input(max_size=10240)  # 10KB
-@admin_required
 def create_user(user: schemas.UserCreate, request: Request, db: Session = Depends(get_db)):
     """Crear nuevo usuario con validación completa de seguridad"""
     
-    # Validar y sanitizar inputs
-    try:
-        # Validar username
-        if user.username:
-            user.username = InputValidator.validate_input(user.username, 'alphanumeric', max_length=50)
-        
-        # Validar email
-        if user.email:
-            user.email = InputValidator.validate_input(user.email, 'email', max_length=255)
-        
-        # Validar full_name
-        if user.full_name:
-            user.full_name = InputValidator.validate_input(user.full_name, 'name', max_length=255)
-        
-        # Validaciones de negocio adicionales
-        if len(user.username) < 3:
-            raise HTTPException(status_code=400, detail="Username debe tener al menos 3 caracteres")
-        
-        if len(user.password) < 8:
-            raise HTTPException(status_code=400, detail="Password debe tener al menos 8 caracteres")
-            
-    except HTTPException as e:
-        logger.warning(
-            f"Invalid user data provided",
-            client_ip=request.client.host,
-            username=user.username,
-            error_detail=e.detail
-        )
-        raise e
+    # Las validaciones de input y sanitización ahora se manejan en el esquema Pydantic (schemas.UserCreate)
     
     # Verificar si el usuario ya existe
     db_user = crud.get_user_by_username(db, username=user.username)

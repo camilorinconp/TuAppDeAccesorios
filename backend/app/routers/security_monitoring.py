@@ -301,7 +301,6 @@ async def block_ip_address(
 
 @router.get("/alert-rules")
 @secure_endpoint(max_requests_per_hour=30, require_admin=True)
-@admin_required
 async def get_alert_rules(
     request: Request,
     db: Session = Depends(get_db),

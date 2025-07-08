@@ -1,9 +1,25 @@
 from pydantic import BaseModel, validator, Field
 from datetime import datetime, date
-from typing import List, Optional
+from typing import List, Optional, Any
 from decimal import Decimal
 
 from .models import UserRole, LoanStatus
+from .security.input_validation import InputValidator
+# from .auth import security as auth_security # Comentado para evitar importación circular
+from fastapi import HTTPException # Import HTTPException for internal use
+
+# Helper function for common input validation
+def _validate_and_sanitize_input(v: Any, field_type: str, max_length: int) -> Any:
+    if v is None:
+        return v
+    if not isinstance(v, str):
+        return v # Let Pydantic handle type errors for non-strings
+
+    try:
+        return InputValidator.validate_and_sanitize(v, field_type, max_length)
+    except HTTPException as e:
+        # Re-raise as ValueError for Pydantic to catch
+        raise ValueError(e.detail)
 
 # Esquemas de respuesta genérica
 class GenericResponse(BaseModel):
@@ -30,25 +46,19 @@ class ProductBase(BaseModel):
     stock_quantity: int = Field(..., ge=0, description="Cantidad en stock (debe ser >= 0)")
     
     @validator('sku')
-    def validate_sku(cls, v):
-        if not v or not v.strip():
-            raise ValueError('❌ El SKU es obligatorio y no puede estar vacío')
-        # Remover espacios extra y convertir a mayúsculas
+    def validate_sku_with_input_validator(cls, v):
+        # La validación de longitud y formato se delega a InputValidator
+        # La conversión a mayúsculas y el strip se mantienen aquí para consistencia
         v = v.strip().upper()
-        # Validar formato (solo alfanumérico y guiones)
-        if not all(c.isalnum() or c in '-_' for c in v):
-            raise ValueError('❌ Formato de SKU inválido: Solo se permiten letras, números, guiones (-) y guiones bajos (_)')
-        if len(v) < 3:
-            raise ValueError('❌ El SKU debe tener al menos 3 caracteres')
-        if len(v) > 20:
-            raise ValueError('❌ El SKU no puede tener más de 20 caracteres')
-        return v
+        return _validate_and_sanitize_input(v, 'sku', 50)
     
     @validator('name')
-    def validate_name(cls, v):
-        if not v or not v.strip():
-            raise ValueError('El nombre no puede estar vacío')
-        return v.strip()
+    def validate_name_with_input_validator(cls, v):
+        return _validate_and_sanitize_input(v, 'name', 200)
+    
+    @validator('description')
+    def validate_description_with_input_validator(cls, v):
+        return _validate_and_sanitize_input(v, 'description', 1000)
     
     @validator('selling_price')
     def validate_selling_price(cls, v, values):
@@ -57,11 +67,13 @@ class ProductBase(BaseModel):
         return v
     
     @validator('image_url')
-    def validate_image_url(cls, v):
-        if v and not v.startswith(('http://', 'https://')):
-            raise ValueError('La URL de la imagen debe comenzar con http:// o https://')
+    def validate_image_url_with_input_validator(cls, v):
+        if v:
+            # Validar formato de URL y sanitizar
+            v = _validate_and_sanitize_input(v, 'url', 500) # Asumiendo que 'url' es un field_type válido en InputValidator
+            if not v.startswith(('http://', 'https://')):
+                raise ValueError('La URL de la imagen debe comenzar con http:// o https://')
         return v
-
 
 class ProductCreate(ProductBase):
     pass
@@ -76,31 +88,31 @@ class ProductUpdate(BaseModel):
     stock_quantity: Optional[int] = Field(None, ge=0)
     
     @validator('sku')
-    def validate_sku(cls, v):
+    def validate_sku_update_with_input_validator(cls, v):
         if v is not None:
-            if not v.strip():
-                raise ValueError('❌ El SKU no puede estar vacío')
             v = v.strip().upper()
-            if not all(c.isalnum() or c in '-_' for c in v):
-                raise ValueError('❌ Formato de SKU inválido: Solo se permiten letras, números, guiones (-) y guiones bajos (_)')
-            if len(v) < 3:
-                raise ValueError('❌ El SKU debe tener al menos 3 caracteres')
-            if len(v) > 20:
-                raise ValueError('❌ El SKU no puede tener más de 20 caracteres')
+            return _validate_and_sanitize_input(v, 'sku', 50)
         return v
     
     @validator('name')
-    def validate_name(cls, v):
-        if v is not None and not v.strip():
-            raise ValueError('El nombre no puede estar vacío')
-        return v.strip() if v else v
+    def validate_name_update_with_input_validator(cls, v):
+        if v is not None:
+            return _validate_and_sanitize_input(v, 'name', 200)
+        return v
+    
+    @validator('description')
+    def validate_description_update_with_input_validator(cls, v):
+        if v is not None:
+            return _validate_and_sanitize_input(v, 'description', 1000)
+        return v
     
     @validator('image_url')
-    def validate_image_url(cls, v):
-        if v and not v.startswith(('http://', 'https://')):
-            raise ValueError('La URL de la imagen debe comenzar con http:// o https://')
+    def validate_image_url_update_with_input_validator(cls, v):
+        if v:
+            v = _validate_and_sanitize_input(v, 'url', 500) # Asumiendo que 'url' es un field_type válido
+            if not v.startswith(('http://', 'https://')):
+                raise ValueError('La URL de la imagen debe comenzar con http:// o https://')
         return v
-
 
 class Product(ProductBase):
     id: int
@@ -116,7 +128,6 @@ class ProductList(BaseModel):
     limit: int
     has_next: bool
 
-
 # Esquemas para Distributor
 class DistributorBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=200, description="Nombre del distribuidor")
@@ -125,27 +136,27 @@ class DistributorBase(BaseModel):
     access_code: str = Field(..., min_length=4, max_length=20, description="Código de acceso")
     
     @validator('name')
-    def validate_name(cls, v):
-        if not v or not v.strip():
-            raise ValueError('El nombre del distribuidor no puede estar vacío')
-        return v.strip()
+    def validate_name_with_input_validator(cls, v):
+        return _validate_and_sanitize_input(v, 'name', 200)
     
     @validator('phone_number')
-    def validate_phone_number(cls, v):
-        if v and not v.replace('+', '').replace('-', '').replace(' ', '').replace('(', '').replace(')', '').isdigit():
-            raise ValueError('El número de teléfono debe contener solo números y caracteres permitidos (+, -, espacios, paréntesis)')
+    def validate_phone_number_with_input_validator(cls, v):
+        if v:
+            # Asumiendo que 'phone' es un field_type válido en InputValidator
+            return _validate_and_sanitize_input(v, 'phone', 20)
         return v
     
     @validator('access_code')
-    def validate_access_code(cls, v):
-        if not v or not v.strip():
-            raise ValueError('El código de acceso no puede estar vacío')
-        return v.strip()
-
+    def validate_access_code_with_input_validator(cls, v):
+        # Asumiendo que 'access_code' es un field_type válido en InputValidator
+        return _validate_and_sanitize_input(v, 'access_code', 20)
 
 class DistributorCreate(DistributorBase):
-    pass
+    access_code: str # Redefinir para aplicar el validador de hashing
 
+    @validator('access_code')
+    def hash_access_code(cls, v):
+        return auth_security.hash_password(v)
 
 class Distributor(DistributorBase):
     id: int
@@ -153,21 +164,20 @@ class Distributor(DistributorBase):
     class Config:
         from_attributes = True
 
-
 # Esquemas para User
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, description="Nombre de usuario")
+    email: str = Field(..., description="Correo electrónico del usuario")
     role: UserRole = Field(..., description="Rol del usuario")
     
     @validator('username')
-    def validate_username(cls, v):
-        if not v or not v.strip():
-            raise ValueError('El nombre de usuario no puede estar vacío')
+    def validate_username_with_input_validator(cls, v):
         v = v.strip().lower()
-        if not v.replace('_', '').replace('-', '').isalnum():
-            raise ValueError('El nombre de usuario solo puede contener letras, números, guiones y guiones bajos')
-        return v
-
+        return _validate_and_sanitize_input(v, 'username', 50)
+    
+    @validator('email')
+    def validate_email_with_input_validator(cls, v):
+        return _validate_and_sanitize_input(v, 'email', 255) # Asumiendo max_length para email
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, description="Contraseña (mínimo 8 caracteres)")
@@ -182,13 +192,11 @@ class UserCreate(UserBase):
             raise ValueError('La contraseña debe contener al menos una letra')
         return v
 
-
 class User(UserBase):
     id: int
 
     class Config:
         from_attributes = True
-
 
 # Esquemas para PointOfSaleItem
 class PointOfSaleItemBase(BaseModel):
@@ -196,12 +204,10 @@ class PointOfSaleItemBase(BaseModel):
     quantity_sold: int = Field(..., gt=0, description="Cantidad vendida (debe ser > 0)")
     price_at_time_of_sale: float = Field(..., ge=0, description="Precio al momento de la venta")
 
-
 class PointOfSaleItemCreate(BaseModel):
     product_id: int = Field(..., gt=0, description="ID del producto")
     quantity_sold: int = Field(..., gt=0, description="Cantidad vendida (debe ser > 0)")
     price_at_time_of_sale: Optional[float] = Field(None, ge=0, description="Precio al momento de la venta (se calcula automáticamente si no se proporciona)")
-
 
 class PointOfSaleItem(PointOfSaleItemBase):
     id: int
@@ -210,12 +216,10 @@ class PointOfSaleItem(PointOfSaleItemBase):
     class Config:
         from_attributes = True
 
-
 # Esquemas para PointOfSaleTransaction
 class PointOfSaleTransactionBase(BaseModel):
     user_id: int = Field(..., gt=0, description="ID del usuario")
     total_amount: float = Field(..., ge=0, description="Monto total de la transacción")
-
 
 class PointOfSaleTransactionCreate(BaseModel):
     items: List[PointOfSaleItemCreate] = Field(..., min_items=1, description="Lista de productos vendidos")
@@ -232,7 +236,6 @@ class PointOfSaleTransactionCreate(BaseModel):
         
         return v
 
-
 class PointOfSaleTransaction(PointOfSaleTransactionBase):
     id: int
     transaction_time: datetime
@@ -240,7 +243,6 @@ class PointOfSaleTransaction(PointOfSaleTransactionBase):
 
     class Config:
         from_attributes = True
-
 
 # Esquemas para ConsignmentLoan
 class ConsignmentLoanBase(BaseModel):
@@ -251,17 +253,14 @@ class ConsignmentLoanBase(BaseModel):
     return_due_date: date
     status: LoanStatus
 
-
 class ConsignmentLoanCreate(ConsignmentLoanBase):
     pass
-
 
 class ConsignmentLoan(ConsignmentLoanBase):
     id: int
 
     class Config:
         from_attributes = True
-
 
 # Esquemas para ConsignmentReport
 class ConsignmentReportBase(BaseModel):
@@ -270,10 +269,8 @@ class ConsignmentReportBase(BaseModel):
     quantity_returned: int
     report_date: date
 
-
 class ConsignmentReportCreate(ConsignmentReportBase):
     pass
-
 
 class ConsignmentReport(ConsignmentReportBase):
     id: int

@@ -283,8 +283,9 @@ export const checkSkuAvailability = async (sku: string): Promise<{
 
 // Función para obtener sugerencias de nombres de productos
 export const getProductNameSuggestions = async (query: string, limit: number = 8): Promise<{
-    query: string;
+    search_term: string;
     suggestions: string[];
+    count: number;
 }> => {
     return apiRequest(`/products/suggest-names?q=${encodeURIComponent(query)}&limit=${limit}`);
 };
