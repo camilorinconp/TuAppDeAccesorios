@@ -122,6 +122,8 @@ def health_check():
 def read_root():
     return {"message": "¡Bienvenido a TuAppDeAccesorios!"}
 
+from .security.audit_logger import audit_logger
+
 @app.on_event("startup")
 async def startup_event():
     """Evento que se ejecuta al iniciar la aplicación"""
@@ -135,6 +137,7 @@ async def startup_event():
         redis_enabled=settings.redis_cache_enabled,
         database_url=settings.database_url.split("@")[-1] if "@" in settings.database_url else "[hidden]"
     )
+    audit_logger.start_periodic_flush()
 
 @app.on_event("shutdown")
 async def shutdown_event():

@@ -144,8 +144,9 @@ class AuditLogger:
             'password', 'token', 'secret', 'key', 'credential',
             'authorization', 'cookie', 'session', 'ssn', 'credit_card'
         }
-        
-        # Iniciar flush automático si está habilitado
+
+    def start_periodic_flush(self):
+        """Iniciar el flush periódico en un segundo plano."""
         if self.async_logging:
             asyncio.create_task(self._periodic_flush())
     

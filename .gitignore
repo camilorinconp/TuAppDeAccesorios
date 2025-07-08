@@ -244,4 +244,4 @@ htmlcov/
 # - render.yaml
 # - Procfile
 # - README.md
-# - DEPLOYMENT.md
+# - DEPLOYMENT.md*.pyc
