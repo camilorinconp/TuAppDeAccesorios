@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone # Importar timezone
 from typing import Optional
 import uuid
 from sqlalchemy.orm import Session
@@ -22,9 +22,9 @@ REFRESH_COOKIE_NAME = "refresh_token"
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     
     # Agregar JTI (JWT ID) único para tracking y revocación
     jti = str(uuid.uuid4())
@@ -32,14 +32,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
         "exp": expire, 
         "type": "access",
         "jti": jti,
-        "iat": datetime.utcnow().timestamp()
+        "iat": datetime.now(timezone.utc).timestamp()
     })
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
 
 def create_refresh_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
     
     # Agregar JTI único para refresh token también
     jti = str(uuid.uuid4())
@@ -47,7 +47,7 @@ def create_refresh_token(data: dict):
         "exp": expire, 
         "type": "refresh",
         "jti": jti,
-        "iat": datetime.utcnow().timestamp()
+        "iat": datetime.now(timezone.utc).timestamp()
     })
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
@@ -94,49 +94,79 @@ def get_token_from_request(request: Request) -> Optional[str]:
     
     return None
 
-@check_token_blacklist
-async def get_current_user(request: Request, db: Session):
-    """Obtiene el usuario actual desde el token JWT con verificación de blacklist
-    Nota: db debe ser inyectado como dependencia en el router
-    """
+def _decode_token(token: str, token_type: str):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    token = get_token_from_request(request)
+    # Verificar que el token no sea None o vacío
     if not token:
         raise credentials_exception
     
-    # Verificar blacklist antes de procesar
-    if token_blacklist.is_blacklisted(token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked"
-        )
-    
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        username: str = payload.get("sub")
-        token_type: str = payload.get("type")
-        
-        if username is None or token_type != "access":
+        if payload.get("type") != token_type:
             raise credentials_exception
-        
-        token_data = schemas.TokenData(username=username)
+        return payload
     except JWTError:
         raise credentials_exception
 
+@check_token_blacklist
+async def get_current_user(request: Request, db: Session):
+    """Obtiene el usuario actual desde el token JWT con verificación de blacklist
+    Nota: db debe ser inyectado como dependencia en el router
+    """
+    payload = _decode_token(get_token_from_request(request), "access")
+    username: str = payload.get("sub")
+    
+    if username is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token_data = schemas.TokenData(username=username)
     user = crud.get_user_by_username(db, username=token_data.username)
     
     if user is None:
-        raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
+
+@check_token_blacklist
+async def get_current_distributor(request: Request, db: Session):
+    """Obtiene el distribuidor actual desde el token JWT"""
+    payload = _decode_token(get_token_from_request(request), "access")
+    distributor_name: str = payload.get("sub")
+    distributor_id: int = payload.get("distributor_id")
+    role: str = payload.get("role")
+    
+    if distributor_name is None or distributor_id is None or role != "distributor":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate distributor credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    distributor = crud.get_distributor(db, distributor_id=distributor_id)
+    
+    if distributor is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate distributor credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return distributor
 
 async def refresh_access_token(request: Request, response: Response, db: Session):
     """Refresca el access token usando el refresh token"""
-    refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    refresh_token = get_token_from_request(request)
     
     if not refresh_token:
         raise HTTPException(
@@ -144,66 +174,27 @@ async def refresh_access_token(request: Request, response: Response, db: Session
             detail="Refresh token not found"
         )
     
-    try:
-        payload = jwt.decode(refresh_token, settings.secret_key, algorithms=[settings.algorithm])
-        username: str = payload.get("sub")
-        token_type: str = payload.get("type")
-        
-        if username is None or token_type != "refresh":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token"
-            )
-        
-        user = crud.get_user_by_username(db, username=username)
-        if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found"
-            )
-        
-        # Crear nuevos tokens
-        new_access_token = create_access_token(data={"sub": user.username})
-        new_refresh_token = create_refresh_token(data={"sub": user.username})
-        
-        # Configurar nuevas cookies
-        set_auth_cookies(response, new_access_token, new_refresh_token)
-        
-        return {"access_token": new_access_token, "token_type": "bearer"}
-        
-    except JWTError:
+    payload = _decode_token(refresh_token, "refresh")
+    username: str = payload.get("sub")
+    
+    if username is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token"
         )
-
-async def get_current_distributor(request: Request, db: Session):
-    """Obtiene el distribuidor actual desde el token JWT"""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate distributor credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     
-    token = get_token_from_request(request)
-    if not token:
-        raise credentials_exception
+    user = crud.get_user_by_username(db, username=username)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
     
-    try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        distributor_name: str = payload.get("sub")
-        distributor_id: int = payload.get("distributor_id")
-        role: str = payload.get("role")
-        token_type: str = payload.get("type")
-        
-        if distributor_name is None or distributor_id is None or role != "distributor" or token_type != "access":
-            raise credentials_exception
-        
-    except JWTError:
-        raise credentials_exception
-
-    distributor = crud.get_distributor(db, distributor_id=distributor_id)
+    # Crear nuevos tokens
+    new_access_token = create_access_token(data={"sub": user.username})
+    new_refresh_token = create_refresh_token(data={"sub": user.username})
     
-    if distributor is None:
-        raise credentials_exception
-    return distributor
+    # Configurar nuevas cookies
+    set_auth_cookies(response, new_access_token, new_refresh_token)
+    
+    return {"access_token": new_access_token, "token_type": "bearer"}

@@ -50,7 +50,8 @@ RUN pip install --upgrade pip && \
 FROM dependencies as development
 
 # Instalar dependencias adicionales para desarrollo
-RUN pip install pytest pytest-cov pytest-asyncio httpx black flake8 bandit safety
+COPY requirements-dev.txt .
+RUN pip install -r requirements-dev.txt
 
 # Copiar código fuente
 COPY . .
@@ -89,9 +90,6 @@ FROM base as production
 COPY --from=dependencies /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
 COPY --from=dependencies /usr/local/bin/ /usr/local/bin/
 
-# Instalar gunicorn para producción
-RUN pip install gunicorn
-
 # Copiar código fuente
 COPY --chown=appuser:appuser . .
 
@@ -114,4 +112,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD ["/usr/local/bin/healthcheck"]
 
 # Comando por defecto para producción
-CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "120", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "50", "--access-logfile", "-", "--error-logfile", "-"]
+CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "120", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "50", "--access-logfile", "-", "--error-logfile", "-"]}

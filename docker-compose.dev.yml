@@ -1,0 +1,30 @@
+version: '3.8'
+
+# DOCKER COMPOSE PARA DESARROLLO LOCAL
+# Usa: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  db:
+    ports:
+      - "5432:5432"  # Expuesto solo para desarrollo
+    
+  redis:
+    ports:
+      - "6379:6379"  # Expuesto solo para desarrollo
+
+  backend:
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      RATE_LIMIT_ENABLED: false
+    volumes:
+      - ./backend:/app:cached
+    
+  frontend:
+    environment:
+      REACT_APP_ENVIRONMENT: development
+      GENERATE_SOURCEMAP: true
+      FAST_REFRESH: true
+    volumes:
+      - ./frontend:/app:cached
+      - /app/node_modules

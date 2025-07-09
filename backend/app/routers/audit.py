@@ -186,7 +186,6 @@ async def get_audit_statistics(
 
 @router.get("/events/types")
 @secure_endpoint(max_requests_per_hour=30, require_admin=True)
-@admin_required
 async def get_event_types(
     request: Request,
     current_user = Depends(get_current_admin_user)

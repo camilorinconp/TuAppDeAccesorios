@@ -165,7 +165,7 @@ const ProductNameAutocompleteFixed: React.FC<ProductNameAutocompleteProps> = ({
           visibility: 'visible',
           transform: 'translateY(0)'
         }}>
-          {suggestions.map((suggestion, index) => (
+          {Array.isArray(suggestions) && suggestions.map((suggestion, index) => (
             <div
               key={`suggestion-${index}`}
               onMouseDown={(e) => {
@@ -180,7 +180,7 @@ const ProductNameAutocompleteFixed: React.FC<ProductNameAutocompleteProps> = ({
               className="dropdown-item"
               style={{
                 backgroundColor: index === selectedIndex ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                borderBottom: index < suggestions.length - 1 ? '1px solid var(--border-color)' : 'none',
+                borderBottom: index < (suggestions?.length || 0) - 1 ? '1px solid var(--border-color)' : 'none',
                 cursor: 'pointer',
                 userSelect: 'none'
               }}

@@ -11,7 +11,8 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Enum,
-    JSON
+    JSON,
+    Boolean
 )
 from sqlalchemy.orm import relationship
 from ..database import Base
@@ -101,7 +102,7 @@ class SecurityAlert(Base):
     details = Column(JSON, nullable=True)
     
     # Estado de la alerta
-    resolved = Column(String, nullable=False, default="false", index=True)
+    resolved = Column(Boolean, nullable=False, default=False, index=True)
     resolved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     resolved_at = Column(DateTime, nullable=True)
     resolution_notes = Column(Text, nullable=True)
@@ -119,7 +120,7 @@ class LoginAttempt(Base):
     # Información del intento
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     username = Column(String, nullable=False, index=True)
-    success = Column(String, nullable=False, index=True)  # "true" o "false"
+    success = Column(Boolean, nullable=False, index=True)
     
     # Información de la sesión
     ip_address = Column(String, nullable=True, index=True)

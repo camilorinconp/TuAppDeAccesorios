@@ -5,7 +5,7 @@
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from fastapi import Request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import hashlib
 import uuid
@@ -62,7 +62,7 @@ class AuditService:
             audit_log = AuditLog(
                 action_type=action_type,
                 severity=severity,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 user_id=user_id,
                 username=username,
                 user_role=user_role,
@@ -134,7 +134,7 @@ class AuditService:
             alert = SecurityAlert(
                 alert_type=alert_type,
                 severity=severity,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 ip_address=ip_address,
                 user_agent=user_agent,
                 username_attempt=username_attempt,
@@ -192,9 +192,9 @@ class AuditService:
             
             # Crear registro de intento de login
             login_attempt = LoginAttempt(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 username=username,
-                success="true" if success else "false",
+                success=success,
                 ip_address=ip_address,
                 user_agent=user_agent,
                 session_id=session_id,
@@ -242,11 +242,11 @@ class AuditService:
         
         try:
             # Verificar intentos fallidos en los últimos 15 minutos
-            since = datetime.utcnow() - timedelta(minutes=15)
+            since = datetime.now(timezone.utc) - timedelta(minutes=15)
             
             failed_attempts = db.query(LoginAttempt).filter(
                 LoginAttempt.username == username,
-                LoginAttempt.success == "false",
+                LoginAttempt.success == False,
                 LoginAttempt.timestamp >= since
             ).count()
             
@@ -362,7 +362,7 @@ class AuditQueryService:
         query = db.query(SecurityAlert)
         
         if resolved is not None:
-            query = query.filter(SecurityAlert.resolved == ("true" if resolved else "false"))
+            query = query.filter(SecurityAlert.resolved == resolved)
         if severity:
             query = query.filter(SecurityAlert.severity == severity)
         
@@ -378,10 +378,10 @@ class AuditQueryService:
     ) -> List[LoginAttempt]:
         """Obtiene intentos de login fallidos"""
         
-        since = datetime.utcnow() - timedelta(hours=hours)
+        since = datetime.now(timezone.utc) - timedelta(hours=hours)
         
         query = db.query(LoginAttempt).filter(
-            LoginAttempt.success == "false",
+            LoginAttempt.success == False,
             LoginAttempt.timestamp >= since
         )
         
@@ -399,7 +399,7 @@ class AuditQueryService:
     ) -> Dict[str, Any]:
         """Obtiene estadísticas de auditoría"""
         
-        since = datetime.utcnow() - timedelta(hours=hours)
+        since = datetime.now(timezone.utc) - timedelta(hours=hours)
         
         # Conteos por tipo de acción
         action_counts = {}
@@ -421,12 +421,12 @@ class AuditQueryService:
         
         # Alertas sin resolver
         unresolved_alerts = db.query(SecurityAlert).filter(
-            SecurityAlert.resolved == "false"
+            SecurityAlert.resolved == False
         ).count()
         
         # Intentos de login fallidos
         failed_logins = db.query(LoginAttempt).filter(
-            LoginAttempt.success == "false",
+            LoginAttempt.success == False,
             LoginAttempt.timestamp >= since
         ).count()
         
@@ -436,5 +436,5 @@ class AuditQueryService:
             "severity_counts": severity_counts,
             "unresolved_alerts": unresolved_alerts,
             "failed_logins_recent": failed_logins,
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": datetime.now(timezone.utc).isoformat()
         }

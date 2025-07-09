@@ -19,8 +19,10 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({ isAuthenticated = f
 
   const navigationItems = [
     { to: "/test", label: "Inicio", icon: "🏠", public: true },
-    { to: "/pos-test", label: "Punto de Venta", icon: "🛒", public: true },
+    { to: "/pos", label: "Punto de Venta", icon: "💰", public: true },
     { to: "/inventory", label: "Inventario", icon: "📦", public: false },
+    { to: "/distributors", label: "Distribuidores", icon: "🏢", public: false },
+    { to: "/consignments", label: "Consignación", icon: "📋", public: false },
     { to: "/dashboard", label: "Dashboard", icon: "📊", public: false },
     { to: "/login", label: "Iniciar Sesión", icon: "🔐", public: true, showWhenLoggedOut: true },
   ];

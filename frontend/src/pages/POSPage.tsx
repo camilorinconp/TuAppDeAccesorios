@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { Product, SalePayload } from '../types';
 import { searchProducts, postSale, apiRequest } from '../services/api';
-import { useCart } from '../context/CartContext';
+// import { useCart } from '../context/CartContext'; // Temporarily disabled - CartContext is deprecated
 import CartDisplay from '../components/CartDisplay';
 
 const POSPage: React.FC = () => {
@@ -14,8 +14,10 @@ const POSPage: React.FC = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [isProcessingSale, setIsProcessingSale] = useState(false);
     
-    // Usar el contexto del carrito
-    const { cart, addToCart, removeFromCart, clearCart, totalAmount } = useCart();
+    // Usar el contexto del carrito - Temporarily disabled
+    // const { cart, addToCart, removeFromCart, clearCart, totalAmount } = useCart();
+    const [cart, setCart] = useState<Product[]>([]);
+    const [totalAmount, setTotalAmount] = useState(0);
     // const { isAuthenticated } = useAuth(); // Para verificar el rol si es necesario
 
     // Monitorear cambios del carrito desde el contexto

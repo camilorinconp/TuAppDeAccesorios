@@ -4,7 +4,7 @@ Configuración de logging estructurado para la aplicación
 import logging
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, timezone # Importar timezone
 from typing import Any, Dict, Optional
 from pythonjsonlogger import jsonlogger
 from pathlib import Path
@@ -17,7 +17,7 @@ class StructuredFormatter(jsonlogger.JsonFormatter):
         super().add_fields(log_record, record, message_dict)
         
         # Agregar campos adicionales
-        log_record['timestamp'] = datetime.utcnow().isoformat() + 'Z'
+        log_record['timestamp'] = datetime.now(timezone.utc).isoformat()
         log_record['level'] = record.levelname
         log_record['logger'] = record.name
         log_record['module'] = record.module
@@ -194,7 +194,7 @@ class AppLogger:
         extra.update({
             'audit_action': action,
             'audit_user_id': user_id,
-            'audit_timestamp': datetime.utcnow().isoformat()
+            'audit_timestamp': datetime.now(timezone.utc).isoformat()
         })
         self.logger.info(f"AUDIT: {action}", extra=extra)
     
@@ -204,7 +204,7 @@ class AppLogger:
         extra.update({
             'performance_operation': operation,
             'performance_duration_ms': duration * 1000,
-            'performance_timestamp': datetime.utcnow().isoformat()
+            'performance_timestamp': datetime.now(timezone.utc).isoformat()
         })
         self.logger.info(f"PERFORMANCE: {operation} took {duration:.3f}s", extra=extra)
 
@@ -243,19 +243,19 @@ def log_function_call(logger: Optional[AppLogger] = None, level: str = "DEBUG"):
                 }
             )
             
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc) # Usar datetime.now(timezone.utc)
             try:
                 result = func(*args, **kwargs)
                 
                 # Log de éxito
-                duration = (datetime.utcnow() - start_time).total_seconds()
+                duration = (datetime.now(timezone.utc) - start_time).total_seconds() # Usar datetime.now(timezone.utc)
                 logger.performance(func_name, duration)
                 
                 return result
                 
             except Exception as e:
                 # Log de error
-                duration = (datetime.utcnow() - start_time).total_seconds()
+                duration = (datetime.now(timezone.utc) - start_time).total_seconds() # Usar datetime.now(timezone.utc)
                 logger.error(
                     f"Error in {func_name}",
                     error=e,

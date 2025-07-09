@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers import products, distributors, users, auth_router, pos, consignments, reports, cache_admin, metrics, audit, search, performance, backup
+from .routers import products, distributors, users, auth_router, pos, consignments, reports, cache_admin, metrics, audit, search, performance, backup, products_categorization, scanner
 # from .routers import celery_jobs  # Comentado temporalmente - falta dependencia celery
 from .config import settings
 from . import models # Importar todos los modelos para que SQLAlchemy los descubra
@@ -13,7 +13,7 @@ from .database import get_db_session_maker
 # )
 # from .middleware.security_headers import SecurityHeadersMiddleware, HTTPSRedirectMiddleware, SecurityValidationMiddleware
 # from .middleware.audit_middleware import AuditMiddleware, AuthAuditMiddleware
-# from .rate_limiter import RateLimitMiddleware
+from .rate_limiter import RateLimitMiddleware
 from .logging_config import setup_logging
 from .metrics import metrics_registry
 import os
@@ -54,7 +54,7 @@ app.add_middleware(
 # app.add_middleware(HTTPSRedirectMiddleware)  # Primero: redireccionar a HTTPS
 # app.add_middleware(SecurityValidationMiddleware)  # Segundo: validaciones de seguridad
 # app.add_middleware(SecurityHeadersMiddleware)  # Tercero: headers de seguridad
-# app.add_middleware(RateLimitMiddleware)  # Rate limiting antes de otros middlewares
+# app.add_middleware(RateLimitMiddleware)  # Rate limiting temporalmente deshabilitado
 # app.add_middleware(AuditMiddleware)  # Auditoría general
 # app.add_middleware(AuthAuditMiddleware)  # Auditoría específica de autenticación
 # app.add_middleware(LoggingMiddleware)
@@ -90,6 +90,7 @@ def get_db():
         db.close()
 
 app.include_router(products.router)
+app.include_router(products_categorization.router)
 app.include_router(distributors.router)
 app.include_router(users.router)
 app.include_router(auth_router.router)
@@ -102,6 +103,7 @@ app.include_router(audit.router)
 app.include_router(backup.router)
 app.include_router(search.router)
 app.include_router(performance.router)
+app.include_router(scanner.router)
 # app.include_router(celery_jobs.router)  # Comentado temporalmente - falta dependencia celery
 
 # Endpoint para métricas

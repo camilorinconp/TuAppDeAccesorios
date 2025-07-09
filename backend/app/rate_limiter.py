@@ -139,12 +139,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     
     def __init__(self, app, requests_per_window: int = None, window_seconds: int = None):
         super().__init__(app)
-        self.requests_per_window = requests_per_window or settings.rate_limit_requests
-        self.window_seconds = window_seconds or settings.rate_limit_window
         
         # Configuraciones específicas por endpoint
         # Límites más generosos para desarrollo, más restrictivos para producción
         is_dev = settings.environment.lower() == "development"
+        
+        # Rate limiting más generoso para desarrollo
+        default_requests = 1000 if is_dev else 100
+        default_window = 300 if is_dev else 3600
+        
+        self.requests_per_window = requests_per_window or default_requests
+        self.window_seconds = window_seconds or default_window
         
         self.endpoint_limits = {
             # Autenticación - muy restrictivo
@@ -156,19 +161,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Endpoints administrativos - restrictivo
             "/api/users/": {"requests": 10 if is_dev else 5, "window": 3600},  # 1 hora
             "/api/users": {"requests": 50 if is_dev else 20, "window": 3600},
-            "/api/distributors/": {"requests": 10 if is_dev else 5, "window": 3600},
+            "/api/distributors/": {"requests": 100 if is_dev else 50, "window": 3600},
             "/api/products/": {"requests": 20 if is_dev else 10, "window": 1800},  # 30 min
+            "/consignments/": {"requests": 100 if is_dev else 50, "window": 3600},  # Para consignaciones
             
             # Búsquedas - moderado
-            "/api/products/search": {"requests": 100 if is_dev else 50, "window": 300},
-            "/api/products/suggest-names": {"requests": 200 if is_dev else 100, "window": 300},
+            "/products/search": {"requests": 100 if is_dev else 50, "window": 300},
+            "/products/suggest-names": {"requests": 200 if is_dev else 100, "window": 300},
             
             # POS y ventas - generoso para operaciones normales
-            "/api/pos/": {"requests": 500 if is_dev else 200, "window": 3600},
-            "/api/sales/": {"requests": 200 if is_dev else 100, "window": 3600},
+            "/pos/": {"requests": 500 if is_dev else 200, "window": 3600},
+            "/pos/sales": {"requests": 200 if is_dev else 100, "window": 3600},
             
             # APIs de lectura - generoso
-            "/api/products": {"requests": 1000 if is_dev else 500, "window": 3600},
+            "/products": {"requests": 1000 if is_dev else 500, "window": 3600},
+            "/products/": {"requests": 1000 if is_dev else 500, "window": 3600},
             "/api/dashboard": {"requests": 200 if is_dev else 100, "window": 3600},
             
             # Métricas y monitoreo - muy restrictivo

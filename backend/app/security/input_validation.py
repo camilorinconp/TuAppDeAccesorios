@@ -14,7 +14,7 @@ class InputValidator:
     SQL_INJECTION_PATTERNS = [
         r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE|UNION|SCRIPT)\b)",
         r"(\b(OR|AND)\s+['\"]?[0-9]+['\"]?\s*=\s*['\"]?[0-9]+['\"]?)",
-        r"(['\"];\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE|UNION|SCRIPT))",
+        r"(['\"];?\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE|UNION|SCRIPT))",
         r"(\b(SLEEP|BENCHMARK|WAITFOR|DELAY)\s*\()",
         r"(\b(LOAD_FILE|INTO\s+OUTFILE|INTO\s+DUMPFILE)\b)",
         r"(\b(INFORMATION_SCHEMA|MYSQL|PERFORMANCE_SCHEMA|SYS)\b)",
@@ -40,11 +40,9 @@ class InputValidator:
     # Caracteres permitidos por tipo de campo
     ALLOWED_CHARS = {
         'alphanumeric': r'^[a-zA-Z0-9\s\-_\.]+$',
-        'name': r'^[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s\-_\.(),]+$',
-        'email': r'^[a-zA-Z0-9\._%+-]+@[a-zA-Z0-9\.-]+\.[a-zA-Z]{2,}$',
-        'numeric': r'^[0-9]+(\.[0-9]+)?$',
-        'sku': r'^[a-zA-Z0-9\-_]+$',
-        'description': r'^[a-zA-ZáéíóúÁÉÍÓÚñÑ0-9\s\-_\.(),;:!?¡¿]+$',
+        'email': r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+        'phone': r'^\+?[1-9]\d{1,14}$',
+        'name': r'^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-\'\.]+$'
     }
     
     @classmethod
@@ -104,12 +102,12 @@ class InputValidator:
         return clean_text
     
     @classmethod
-    def validate_input(cls, text: str, field_type: str = 'description', max_length: int = 255) -> str:
-        """Validación completa de input"""
-        if not isinstance(text, str):
-            text = str(text)
-        
-        # Verificar longitud
+    def validate_and_sanitize(cls, text: str, field_type: str = 'general', max_length: int = 255) -> str:
+        """Validar y sanitizar input completo"""
+        if not text:
+            return ""
+            
+        # Validar longitud
         if len(text) > max_length:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -120,72 +118,23 @@ class InputValidator:
         if not cls.validate_sql_injection(text):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El texto contiene patrones no permitidos"
+                detail="El texto contiene patrones de SQL injection no permitidos"
             )
         
         # Validar XSS
         if not cls.validate_xss(text):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El texto contiene código potencialmente peligroso"
+                detail="El texto contiene patrones de XSS no permitidos"
             )
         
-        # Validar formato específico
-        if not cls.validate_format(text, field_type):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"El formato del campo {field_type} no es válido"
-            )
-        
-        # Sanitizar y devolver
+        # Sanitizar y retornar
         return cls.sanitize_input(text, field_type)
 
 
-# Decorador para validar inputs automáticamente
-def validate_input_decorator(field_type: str = 'description', max_length: int = 255):
-    """Decorador para validar inputs de funciones"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            # Validar argumentos que sean strings
-            validated_args = []
-            for arg in args:
-                if isinstance(arg, str):
-                    validated_args.append(InputValidator.validate_input(arg, field_type, max_length))
-                else:
-                    validated_args.append(arg)
-            
-            # Validar kwargs que sean strings
-            validated_kwargs = {}
-            for key, value in kwargs.items():
-                if isinstance(value, str):
-                    validated_kwargs[key] = InputValidator.validate_input(value, field_type, max_length)
-                else:
-                    validated_kwargs[key] = value
-            
-            return func(*validated_args, **validated_kwargs)
-        return wrapper
-    return decorator
-
-
-# Función helper para validar query parameters
-def validate_query_param(param: Optional[str], param_name: str, field_type: str = 'alphanumeric', max_length: int = 100) -> Optional[str]:
-    """Validar parámetros de query de forma segura"""
-    if param is None:
-        return None
-    
-    try:
-        return InputValidator.validate_input(param, field_type, max_length)
-    except HTTPException as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Parámetro '{param_name}' inválido: {e.detail}"
-        )
-
-
-# Función helper para validar búsquedas
 def validate_search_term(search_term: str, max_length: int = 100) -> str:
-    """Validar términos de búsqueda de forma segura"""
-    if not search_term or not search_term.strip():
+    """Validar término de búsqueda"""
+    if not search_term:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El término de búsqueda no puede estar vacío"
@@ -208,7 +157,43 @@ def validate_search_term(search_term: str, max_length: int = 100) -> str:
             detail="El término de búsqueda contiene patrones no permitidos"
         )
     
-    # Escape de caracteres especiales para LIKE
-    escaped_term = search_term.replace('%', '\\%').replace('_', '\\_')
+    return search_term
+
+
+def validate_email(email: str) -> str:
+    """Validar formato de email"""
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El email no puede estar vacío"
+        )
     
-    return escaped_term
+    # Normalizar
+    email = email.strip().lower()
+    
+    # Validar formato
+    if not InputValidator.validate_format(email, 'email'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de email inválido"
+        )
+    
+    return email
+
+
+def validate_phone(phone: str) -> str:
+    """Validar formato de teléfono"""
+    if not phone:
+        return ""
+    
+    # Limpiar teléfono
+    phone = re.sub(r'[^\d+]', '', phone.strip())
+    
+    # Validar formato
+    if not InputValidator.validate_format(phone, 'phone'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de teléfono inválido"
+        )
+    
+    return phone

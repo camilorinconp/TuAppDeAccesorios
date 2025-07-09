@@ -48,6 +48,11 @@ class AuthorizationError(AppException):
     pass
 
 
+class ConsignmentError(BusinessLogicError):
+    """Error específico de operaciones de consignación"""
+    pass
+
+
 # Conversión de excepciones a HTTPException
 def convert_to_http_exception(exc: AppException) -> HTTPException:
     """Convierte excepciones de la aplicación a HTTPException de FastAPI"""
