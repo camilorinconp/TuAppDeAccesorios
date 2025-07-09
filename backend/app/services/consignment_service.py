@@ -9,7 +9,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 
 from ..models.main import Product, ConsignmentLoan, ConsignmentReport, Distributor
-from ..models.enums import LoanStatus
+from ..models.enums import LoanStatus, LocationType
 from ..services.inventory_service import InventoryService
 from ..logging_config import get_secure_logger
 from ..exceptions import ValidationError, BusinessLogicError

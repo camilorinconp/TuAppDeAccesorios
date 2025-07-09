@@ -1,5 +1,20 @@
 // /frontend/src/types/index.ts
 
+// Enum de categorías de productos
+export enum ProductCategory {
+  FUNDAS = "fundas",
+  CARGADORES = "cargadores", 
+  CABLES = "cables",
+  AUDIFONOS = "audifonos",
+  VIDRIOS = "vidrios_templados",
+  SOPORTES = "soportes",
+  BATERIAS = "baterias_externas",
+  MEMORIAS = "memorias",
+  LIMPIEZA = "limpieza",
+  VEHICULOS = "vehiculos",
+  OTROS = "otros"
+}
+
 export interface Product {
   id: number;
   sku: string;
@@ -8,7 +23,20 @@ export interface Product {
   image_url?: string;
   cost_price: number;
   selling_price: number;
+  wholesale_price?: number;
   stock_quantity: number;
+  
+  // Código de barras
+  barcode?: string;
+  internal_code?: string;
+  
+  // Campos de categorización
+  category: ProductCategory;
+  subcategory?: string;
+  brand?: string;
+  tags?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CartItem extends Product {
@@ -33,6 +61,7 @@ export interface Distributor {
   contact_person?: string;
   phone_number?: string;
   access_code: string;
+  contact_info?: string; // Agregado para compatibilidad
 }
 
 export interface ConsignmentLoan {
@@ -69,3 +98,68 @@ export interface PaginationProps {
   onPageChange: (page: number) => void;
   disabled?: boolean;
 }
+
+// Interfaces para filtros y categorización
+export interface ProductFilters {
+  search?: string;
+  category?: ProductCategory;
+  brand?: string;
+  min_price?: number;
+  max_price?: number;
+  in_stock?: boolean;
+  tags?: string;
+}
+
+export interface CategoryInfo {
+  category: ProductCategory;
+  name: string;
+  count: number;
+  description: string;
+}
+
+export interface BrandInfo {
+  brand: string;
+  count: number;
+  categories: string[];
+}
+
+export interface ProductFiltersResponse {
+  categories: CategoryInfo[];
+  brands: BrandInfo[];
+  price_range: {
+    min: number;
+    max: number;
+    avg: number;
+  };
+  total_products: number;
+}
+
+// Mapeo de nombres amigables para categorías
+export const CATEGORY_NAMES: Record<ProductCategory, string> = {
+  [ProductCategory.FUNDAS]: "Fundas y Carcasas",
+  [ProductCategory.CARGADORES]: "Cargadores",
+  [ProductCategory.CABLES]: "Cables",
+  [ProductCategory.AUDIFONOS]: "Audífonos",
+  [ProductCategory.VIDRIOS]: "Vidrios Templados",
+  [ProductCategory.SOPORTES]: "Soportes",
+  [ProductCategory.BATERIAS]: "Baterías Externas",
+  [ProductCategory.MEMORIAS]: "Memorias",
+  [ProductCategory.LIMPIEZA]: "Limpieza",
+  [ProductCategory.VEHICULOS]: "Accesorios Vehiculares",
+  [ProductCategory.OTROS]: "Otros"
+};
+
+// Iconos para categorías
+export const CATEGORY_ICONS: Record<ProductCategory, string> = {
+  [ProductCategory.FUNDAS]: "📱",
+  [ProductCategory.CARGADORES]: "🔌",
+  [ProductCategory.CABLES]: "🔌",
+  [ProductCategory.AUDIFONOS]: "🎧",
+  [ProductCategory.VIDRIOS]: "🛡️",
+  [ProductCategory.SOPORTES]: "📱",
+  [ProductCategory.BATERIAS]: "🔋",
+  [ProductCategory.MEMORIAS]: "💾",
+  [ProductCategory.LIMPIEZA]: "🧽",
+  [ProductCategory.VEHICULOS]: "🚗",
+  [ProductCategory.OTROS]: "📦"
+};

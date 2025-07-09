@@ -124,10 +124,20 @@ const InventoryPage: React.FC = () => {
     skuValidation.validateSku(sku);
   };
 
-  const validatePrices = (costPrice: number, sellingPrice: number) => {
+  const validatePrices = (costPrice: number, sellingPrice: number, wholesalePrice?: number) => {
     if (costPrice > 0 && sellingPrice > 0 && sellingPrice <= costPrice) {
       setPriceError("El precio de venta debe ser mayor al precio de costo");
       return false;
+    }
+    if (wholesalePrice && wholesalePrice > 0) {
+      if (wholesalePrice < costPrice) {
+        setPriceError("El precio mayorista no puede ser menor al precio de costo");
+        return false;
+      }
+      if (wholesalePrice > sellingPrice) {
+        setPriceError("El precio mayorista debe ser menor o igual al precio de venta al detal");
+        return false;
+      }
     }
     setPriceError(null);
     return true;
@@ -137,7 +147,7 @@ const InventoryPage: React.FC = () => {
     const costPrice = value ? parseFloat(value) : 0;
     setNewProduct({ ...newProduct, cost_price: costPrice });
     if (newProduct.selling_price) {
-      validatePrices(costPrice, newProduct.selling_price);
+      validatePrices(costPrice, newProduct.selling_price, newProduct.wholesale_price);
     }
   };
 
@@ -145,7 +155,15 @@ const InventoryPage: React.FC = () => {
     const sellingPrice = value ? parseFloat(value) : 0;
     setNewProduct({ ...newProduct, selling_price: sellingPrice });
     if (newProduct.cost_price) {
-      validatePrices(newProduct.cost_price, sellingPrice);
+      validatePrices(newProduct.cost_price, sellingPrice, newProduct.wholesale_price);
+    }
+  };
+
+  const handleWholesalePriceChange = (value: string) => {
+    const wholesalePrice = value ? parseFloat(value) : undefined;
+    setNewProduct({ ...newProduct, wholesale_price: wholesalePrice });
+    if (newProduct.cost_price && newProduct.selling_price) {
+      validatePrices(newProduct.cost_price, newProduct.selling_price, wholesalePrice);
     }
   };
 
@@ -336,6 +354,15 @@ const InventoryPage: React.FC = () => {
             </small>
           )}
         </div>
+        <div style={{ position: 'relative' }}>
+          <input 
+            className={`input ${priceError ? 'input-error' : ''}`}
+            type="number" 
+            placeholder="Precio Venta Mayorista en COP (ej: 22000)" 
+            value={newProduct.wholesale_price || ''} 
+            onChange={e => handleWholesalePriceChange(e.target.value)}
+          />
+        </div>
         <input className="input" type="number" placeholder="Cantidad en Stock (ej: 50)" value={newProduct.stock_quantity || ''} onChange={e => setNewProduct({ ...newProduct, stock_quantity: e.target.value ? parseInt(e.target.value) : 0 })} required />
         <div className="form-grid-full">
           <button 
@@ -447,6 +474,7 @@ const InventoryPage: React.FC = () => {
             <th>Nombre</th>
             <th style={{ textAlign: 'right' }}>Costo (COP)</th>
             <th style={{ textAlign: 'right' }}>Venta (COP)</th>
+            <th style={{ textAlign: 'right' }}>Mayorista (COP)</th>
             <th style={{ textAlign: 'right' }}>Stock</th>
             <th style={{ textAlign: 'right' }}>Valor Stock (COP)</th>
             <th style={{ textAlign: 'center' }}>Acciones</th>
@@ -471,6 +499,9 @@ const InventoryPage: React.FC = () => {
               </td>
               <td style={{ textAlign: 'right' }}>
                 ${product.selling_price.toLocaleString('es-CO')}
+              </td>
+              <td style={{ textAlign: 'right' }}>
+                {product.wholesale_price ? `$${product.wholesale_price.toLocaleString('es-CO')}` : '-'}
               </td>
               <td style={{ textAlign: 'right' }}>
                 {product.stock_quantity}
@@ -567,6 +598,14 @@ const InventoryPage: React.FC = () => {
               value={editingProduct.selling_price} 
               onChange={e => setEditingProduct({ ...editingProduct, selling_price: parseFloat(e.target.value) })} 
               required 
+            />
+            <input 
+              className="input"
+              type="number" 
+              step="0.01"
+              placeholder="Precio Venta Mayorista en COP (ej: 22000)" 
+              value={editingProduct.wholesale_price || ''} 
+              onChange={e => setEditingProduct({ ...editingProduct, wholesale_price: e.target.value ? parseFloat(e.target.value) : undefined })} 
             />
             <input 
               className="input"

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 import re
 
 from .. import crud, schemas, models
+from ..models.enums import ProductCategory
 from ..dependencies import get_db, get_current_admin_user
 from ..metrics import business_metrics
 from ..logging_config import get_secure_logger
@@ -135,8 +136,12 @@ async def read_products(
     request: Request,
     page: int = Query(1, ge=1, description="Número de página (empezando desde 1)"),
     per_page: int = Query(20, ge=1, le=100, description="Elementos por página (máximo 100)"),
-    search: Optional[str] = Query(None, description="Búsqueda por nombre, descripción, marca o código"),
-    category: Optional[str] = Query(None, description="Filtrar por categoría"),
+    search: Optional[str] = Query(None, description="Búsqueda por nombre, descripción, marca, SKU, código de barras o código interno"),
+    category: Optional[ProductCategory] = Query(None, description="Filtrar por categoría"),
+    brand: Optional[str] = Query(None, description="Filtrar por marca"),
+    min_price: Optional[float] = Query(None, ge=0, description="Precio mínimo"),
+    max_price: Optional[float] = Query(None, ge=0, description="Precio máximo"),
+    in_stock: Optional[bool] = Query(None, description="Solo productos con stock"),
     is_active: bool = Query(True, description="Mostrar solo productos activos"),
     db: Session = Depends(get_db)
 ):
@@ -144,13 +149,17 @@ async def read_products(
     Obtener lista paginada de productos con filtros y búsqueda optimizada
     """
     
-    # Usar paginación optimizada
+    # Usar paginación optimizada con filtros avanzados
     products, total = paginate_products(
         db=db,
         page=page,
         per_page=per_page,
         search=search,
-        category=category,
+        category=category.value if category else None,
+        brand=brand,
+        min_price=min_price,
+        max_price=max_price,
+        in_stock=in_stock,
         is_active=is_active
     )
     
@@ -220,6 +229,84 @@ def search_products(
         products = crud.search_products_with_metrics(db, query=search_term_validated, limit=limit)
     
     return products
+
+@router.get("/products/search/barcode/{barcode}", response_model=schemas.Product)
+def search_product_by_barcode(
+    barcode: str,
+    db: Session = Depends(get_db)
+):
+    """Buscar producto por código de barras"""
+    
+    # Validar código de barras
+    validated_barcode = validate_search_term(barcode.strip())
+    
+    # Buscar producto por código de barras
+    product = db.query(models.Product).filter(
+        models.Product.barcode == validated_barcode
+    ).first()
+    
+    if not product:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No se encontró producto con código de barras '{validated_barcode}'"
+        )
+    
+    return product
+
+@router.get("/products/search/internal-code/{internal_code}", response_model=schemas.Product)
+def search_product_by_internal_code(
+    internal_code: str,
+    db: Session = Depends(get_db)
+):
+    """Buscar producto por código interno"""
+    
+    # Validar código interno
+    validated_code = validate_search_term(internal_code.strip())
+    
+    # Buscar producto por código interno
+    product = db.query(models.Product).filter(
+        models.Product.internal_code == validated_code
+    ).first()
+    
+    if not product:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No se encontró producto con código interno '{validated_code}'"
+        )
+    
+    return product
+
+@router.post("/products/validate-barcode")
+def validate_barcode_availability(
+    barcode_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Validar si un código de barras está disponible"""
+    
+    barcode = barcode_data.get("barcode", "").strip()
+    if not barcode:
+        raise HTTPException(status_code=400, detail="Código de barras requerido")
+    
+    # Validar formato
+    validated_barcode = validate_search_term(barcode)
+    
+    # Verificar si ya existe
+    existing_product = db.query(models.Product).filter(
+        models.Product.barcode == validated_barcode
+    ).first()
+    
+    return {
+        "barcode": validated_barcode,
+        "available": existing_product is None,
+        "exists": existing_product is not None,
+        "message": "Código de barras disponible" if existing_product is None else f"Código de barras '{validated_barcode}' ya existe",
+        "existing_product": {
+            "id": existing_product.id,
+            "name": existing_product.name,
+            "sku": existing_product.sku,
+            "barcode": existing_product.barcode
+        } if existing_product else None
+    }
 
 
 @router.get("/products/{product_id}", response_model=schemas.Product)

@@ -210,33 +210,56 @@ def paginate_products(
     per_page: int = 20,
     search: Optional[str] = None,
     category: Optional[str] = None,
+    brand: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    in_stock: Optional[bool] = None,
     is_active: bool = True
 ):
-    """Paginación específica para productos con filtros"""
+    """Paginación específica para productos con filtros avanzados"""
     
     from .models import Product
     
     query = db.query(Product)
     
-    # El campo is_active no existe en el modelo actual, omitir este filtro
-    # if is_active is not None:
-    #     query = query.filter(Product.is_active == is_active)
+    # Filtro por categoría
+    if category:
+        query = query.filter(Product.category == category)
     
-    # El campo category no existe en el modelo actual, omitir este filtro
-    # if category:
-    #     query = query.filter(Product.category.ilike(f"%{category}%"))
+    # Filtro por marca
+    if brand:
+        query = query.filter(Product.brand.ilike(f"%{brand}%"))
     
-    # Búsqueda por texto (solo en campos que existen)
+    # Filtro por rango de precios
+    if min_price is not None:
+        query = query.filter(Product.selling_price >= min_price)
+    
+    if max_price is not None:
+        query = query.filter(Product.selling_price <= max_price)
+    
+    # Filtro por stock
+    if in_stock is not None:
+        if in_stock:
+            query = query.filter(Product.stock_quantity > 0)
+        else:
+            query = query.filter(Product.stock_quantity == 0)
+    
+    # Búsqueda por texto (incluye códigos de barras)
     if search:
         search_filter = (
             Product.name.ilike(f"%{search}%") |
             Product.description.ilike(f"%{search}%") |
-            Product.sku.ilike(f"%{search}%")
+            Product.sku.ilike(f"%{search}%") |
+            Product.brand.ilike(f"%{search}%") |
+            Product.subcategory.ilike(f"%{search}%") |
+            Product.tags.ilike(f"%{search}%") |
+            Product.barcode.ilike(f"%{search}%") |
+            Product.internal_code.ilike(f"%{search}%")
         )
         query = query.filter(search_filter)
     
-    # Ordenar por nombre por defecto
-    query = query.order_by(Product.name.asc())
+    # Ordenar por categoría, marca y nombre
+    query = query.order_by(Product.category.asc(), Product.brand.asc(), Product.name.asc())
     
     # Usar paginador
     paginator = DatabasePaginator(db)

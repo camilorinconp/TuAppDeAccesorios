@@ -17,7 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from ..database import Base
-from .enums import UserRole, LoanStatus, LocationType
+from .enums import UserRole, LoanStatus, LocationType, ProductCategory
 from datetime import datetime
 
 
@@ -30,8 +30,23 @@ class Product(Base):
     description = Column(String, index=True)  # Índice para búsquedas en descripción
     image_url = Column(String)
     cost_price = Column(Numeric(10, 2), nullable=False)
-    selling_price = Column(Numeric(10, 2), nullable=False, index=True)  # Índice para ordenamiento por precio
+    selling_price = Column(Numeric(10, 2), nullable=False, index=True)  # Precio venta detal
+    wholesale_price = Column(Numeric(10, 2), nullable=True, index=True)  # Precio venta mayorista
     stock_quantity = Column(Integer, nullable=False, default=0, index=True)  # Índice para filtros de stock
+    
+    # Código de barras
+    barcode = Column(String, unique=True, nullable=True, index=True)  # Código de barras único
+    internal_code = Column(String, nullable=True, index=True)  # Código interno (como el "21" de la etiqueta)
+    
+    # Campos de categorización
+    category = Column(Enum(ProductCategory), nullable=False, default=ProductCategory.otros, index=True)  # Categoría principal
+    subcategory = Column(String, index=True, nullable=True)  # Subcategoría específica
+    brand = Column(String, index=True, nullable=True)  # Marca del producto
+    tags = Column(String, nullable=True)  # Tags separados por comas para búsquedas adicionales
+    
+    # Metadatos adicionales
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relaciones
     locations = relationship("ProductLocation", back_populates="product")
@@ -154,6 +169,73 @@ class ConsignmentReport(Base):
     loan = relationship("ConsignmentLoan", back_populates="reports")
 
 
+class InventoryMovement(Base):
+    """Modelo para registrar todos los movimientos de inventario con pistola lectora"""
+    __tablename__ = "inventory_movements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    barcode_scanned = Column(String, nullable=False, index=True)  # Código escaneado
+    movement_type = Column(String, nullable=False, index=True)  # 'in', 'out', 'transfer'
+    
+    # Ubicaciones
+    from_location_type = Column(Enum(LocationType), nullable=True, index=True)
+    from_location_id = Column(Integer, nullable=True, index=True)
+    to_location_type = Column(Enum(LocationType), nullable=False, index=True)
+    to_location_id = Column(Integer, nullable=True, index=True)
+    
+    # Cantidades
+    quantity = Column(Integer, nullable=False, default=1)
+    
+    # Metadatos
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    # Referencias a transacciones
+    reference_type = Column(String, nullable=True)  # 'sale', 'loan', 'return', 'incoming'
+    reference_id = Column(Integer, nullable=True)
+    
+    # Información adicional
+    notes = Column(String, nullable=True)
+    device_info = Column(String, nullable=True)  # Info de la pistola/dispositivo
+    
+    # Relaciones
+    product = relationship("Product")
+    user = relationship("User")
+
+
+class ScanSession(Base):
+    """Modelo para sesiones de escaneo con pistola lectora"""
+    __tablename__ = "scan_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_type = Column(String, nullable=False, index=True)  # 'inventory', 'consignment', 'sales', 'incoming'
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    
+    # Información de la sesión
+    started_at = Column(DateTime, default=datetime.utcnow, index=True)
+    ended_at = Column(DateTime, nullable=True, index=True)
+    status = Column(String, default="active", index=True)  # 'active', 'completed', 'cancelled'
+    
+    # Contadores
+    total_scans = Column(Integer, default=0)
+    successful_scans = Column(Integer, default=0)
+    failed_scans = Column(Integer, default=0)
+    
+    # Metadatos
+    location_type = Column(Enum(LocationType), nullable=True)
+    location_id = Column(Integer, nullable=True)
+    reference_type = Column(String, nullable=True)
+    reference_id = Column(Integer, nullable=True)
+    
+    # Información del dispositivo
+    device_info = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    
+    # Relaciones
+    user = relationship("User")
+
+
 # Índices compuestos para optimización de consultas específicas
 
 # Índice compuesto para búsquedas de transacciones por usuario y fecha
@@ -172,3 +254,19 @@ Index('idx_report_loan_date', ConsignmentReport.loan_id, ConsignmentReport.repor
 Index('idx_product_location_type', ProductLocation.product_id, ProductLocation.location_type)
 Index('idx_location_type_id', ProductLocation.location_type, ProductLocation.location_id)
 Index('idx_product_location_reference', ProductLocation.product_id, ProductLocation.reference_type, ProductLocation.reference_id)
+
+# Índices compuestos para categorización de productos
+Index('idx_product_category_brand', Product.category, Product.brand)
+Index('idx_product_category_stock', Product.category, Product.stock_quantity)
+Index('idx_product_category_price', Product.category, Product.selling_price)
+Index('idx_product_brand_name', Product.brand, Product.name)
+
+# Índices compuestos para movimientos de inventario
+Index('idx_inventory_movement_product_timestamp', InventoryMovement.product_id, InventoryMovement.timestamp)
+Index('idx_inventory_movement_barcode_timestamp', InventoryMovement.barcode_scanned, InventoryMovement.timestamp)
+Index('idx_inventory_movement_type_timestamp', InventoryMovement.movement_type, InventoryMovement.timestamp)
+Index('idx_inventory_movement_location', InventoryMovement.to_location_type, InventoryMovement.to_location_id)
+
+# Índices compuestos para sesiones de escaneo
+Index('idx_scan_session_user_started', ScanSession.user_id, ScanSession.started_at)
+Index('idx_scan_session_type_status', ScanSession.session_type, ScanSession.status)

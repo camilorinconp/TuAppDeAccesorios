@@ -22,7 +22,7 @@ interface CartItem extends Product {
   quantity_in_cart: number;
 }
 
-const POSClean: React.FC = () => {
+const POSModern: React.FC = () => {
   const dispatch = useAppDispatch();
   
   // Estados locales
@@ -784,4 +784,4 @@ const POSClean: React.FC = () => {
   );
 };
 
-export default POSClean;
+export default POSModern;

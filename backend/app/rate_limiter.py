@@ -161,8 +161,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Endpoints administrativos - restrictivo
             "/api/users/": {"requests": 10 if is_dev else 5, "window": 3600},  # 1 hora
             "/api/users": {"requests": 50 if is_dev else 20, "window": 3600},
-            "/api/distributors/": {"requests": 10 if is_dev else 5, "window": 3600},
+            "/api/distributors/": {"requests": 100 if is_dev else 50, "window": 3600},
             "/api/products/": {"requests": 20 if is_dev else 10, "window": 1800},  # 30 min
+            "/consignments/": {"requests": 100 if is_dev else 50, "window": 3600},  # Para consignaciones
             
             # Búsquedas - moderado
             "/products/search": {"requests": 100 if is_dev else 50, "window": 300},

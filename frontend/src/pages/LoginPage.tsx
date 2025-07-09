@@ -1,24 +1,28 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useReduxAuth } from '../hooks/useReduxAuth';
+import { loginUser } from '../services/api';
 
 const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin');
-  const { login, isLoading, error: authError } = useReduxAuth();
+  const [password, setPassword] = useState('admin123');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
+    setError(null);
     
     try {
-      const success = await login({ username, password });
-      
-      if (success) {
-        navigate('/dashboard');
-      }
+      await loginUser(username, password);
+      // Login exitoso, redirigir al dashboard
+      navigate('/dashboard');
     } catch (err: any) {
       console.error('Login error:', err);
+      setError('Error de autenticación. Verifica tus credenciales.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -48,7 +52,7 @@ const LoginPage: React.FC = () => {
             required
           />
         </div>
-        {authError && <p style={{ color: 'red' }}>{authError}</p>}
+        {error && <p style={{ color: 'red' }}>{error}</p>}
         <button 
           type="submit" 
           disabled={isLoading}
@@ -59,11 +63,29 @@ const LoginPage: React.FC = () => {
             color: 'white', 
             border: 'none', 
             borderRadius: '5px', 
-            cursor: isLoading ? 'not-allowed' : 'pointer' 
+            cursor: isLoading ? 'not-allowed' : 'pointer',
+            marginBottom: '10px'
           }}
         >
           {isLoading ? 'Ingresando...' : 'Ingresar'}
         </button>
+        {isLoading && (
+          <button 
+            type="button"
+            onClick={() => setIsLoading(false)}
+            style={{ 
+              width: '100%', 
+              padding: '10px', 
+              backgroundColor: '#dc3545', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '5px', 
+              cursor: 'pointer' 
+            }}
+          >
+            Cancelar
+          </button>
+        )}
       </form>
     </div>
   );

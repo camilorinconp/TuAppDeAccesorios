@@ -100,8 +100,7 @@ def login_for_distributor_access_token(
         user_id=distributor.id if distributor else None, # Usar ID del distribuidor como user_id en auditoría
         session_id=session_id,
         failure_reason=failure_reason,
-        request=request,
-        is_distributor=True
+        request=request
     )
 
     # Si falló el login, lanzar excepción

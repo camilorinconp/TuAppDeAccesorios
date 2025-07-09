@@ -4,8 +4,9 @@ from typing import List, Optional, Any
 from decimal import Decimal
 
 from .models import UserRole, LoanStatus
+from .models.enums import ProductCategory, LocationType
 from .security.input_validation import InputValidator
-# from .auth import security as auth_security # Comentado para evitar importación circular
+from .utils.security import get_password_hash
 from fastapi import HTTPException # Import HTTPException for internal use
 
 # Helper function for common input validation
@@ -42,8 +43,19 @@ class ProductBase(BaseModel):
     description: Optional[str] = Field(None, max_length=1000, description="Descripción del producto")
     image_url: Optional[str] = Field(None, max_length=500, description="URL de la imagen")
     cost_price: float = Field(..., ge=0, description="Precio de costo (debe ser >= 0)")
-    selling_price: float = Field(..., ge=0, description="Precio de venta (debe ser >= 0)")
+    selling_price: float = Field(..., ge=0, description="Precio de venta al detal (debe ser >= 0)")
+    wholesale_price: Optional[float] = Field(None, ge=0, description="Precio de venta mayorista (debe ser >= 0)")
     stock_quantity: int = Field(..., ge=0, description="Cantidad en stock (debe ser >= 0)")
+    
+    # Código de barras
+    barcode: Optional[str] = Field(None, max_length=50, description="Código de barras del producto")
+    internal_code: Optional[str] = Field(None, max_length=20, description="Código interno del producto")
+    
+    # Campos de categorización (opcionales para compatibilidad)
+    category: Optional[ProductCategory] = Field(None, description="Categoría del producto")
+    subcategory: Optional[str] = Field(None, max_length=100, description="Subcategoría específica")
+    brand: Optional[str] = Field(None, max_length=100, description="Marca del producto")
+    tags: Optional[str] = Field(None, max_length=500, description="Tags separados por comas")
     
     @validator('sku')
     def validate_sku_with_input_validator(cls, v):
@@ -66,6 +78,15 @@ class ProductBase(BaseModel):
             raise ValueError('El precio de venta no puede ser menor al precio de costo')
         return v
     
+    @validator('wholesale_price')
+    def validate_wholesale_price(cls, v, values):
+        if v is not None:
+            if 'cost_price' in values and v < values['cost_price']:
+                raise ValueError('El precio mayorista no puede ser menor al precio de costo')
+            if 'selling_price' in values and v > values['selling_price']:
+                raise ValueError('El precio mayorista debe ser menor o igual al precio de venta al detal')
+        return v
+    
     @validator('image_url')
     def validate_image_url_with_input_validator(cls, v):
         if v:
@@ -73,6 +94,28 @@ class ProductBase(BaseModel):
             v = _validate_and_sanitize_input(v, 'url', 500) # Asumiendo que 'url' es un field_type válido en InputValidator
             if not v.startswith(('http://', 'https://')):
                 raise ValueError('La URL de la imagen debe comenzar con http:// o https://')
+        return v
+    
+    @validator('subcategory')
+    def validate_subcategory(cls, v):
+        if v is not None:
+            return _validate_and_sanitize_input(v, 'name', 100)
+        return v
+    
+    @validator('brand') 
+    def validate_brand(cls, v):
+        if v is not None:
+            return _validate_and_sanitize_input(v, 'name', 100)
+        return v
+    
+    @validator('tags')
+    def validate_tags(cls, v):
+        if v is not None:
+            # Validar y limpiar tags (separados por comas)
+            tags = [tag.strip() for tag in v.split(',') if tag.strip()]
+            if len(tags) > 10:  # Límite de 10 tags
+                raise ValueError('Máximo 10 tags permitidos')
+            return ', '.join(tags)
         return v
 
 class ProductCreate(ProductBase):
@@ -85,7 +128,18 @@ class ProductUpdate(BaseModel):
     image_url: Optional[str] = Field(None, max_length=500)
     cost_price: Optional[float] = Field(None, ge=0)
     selling_price: Optional[float] = Field(None, ge=0)
+    wholesale_price: Optional[float] = Field(None, ge=0, description="Precio de venta mayorista")
     stock_quantity: Optional[int] = Field(None, ge=0)
+    
+    # Código de barras
+    barcode: Optional[str] = Field(None, max_length=50, description="Código de barras del producto")
+    internal_code: Optional[str] = Field(None, max_length=20, description="Código interno del producto")
+    
+    # Campos de categorización
+    category: Optional[ProductCategory] = Field(None, description="Categoría del producto")
+    subcategory: Optional[str] = Field(None, max_length=100, description="Subcategoría específica")
+    brand: Optional[str] = Field(None, max_length=100, description="Marca del producto")
+    tags: Optional[str] = Field(None, max_length=500, description="Tags separados por comas")
     
     @validator('sku')
     def validate_sku_update_with_input_validator(cls, v):
@@ -113,6 +167,28 @@ class ProductUpdate(BaseModel):
             if not v.startswith(('http://', 'https://')):
                 raise ValueError('La URL de la imagen debe comenzar con http:// o https://')
         return v
+    
+    @validator('subcategory')
+    def validate_subcategory_update(cls, v):
+        if v is not None:
+            return _validate_and_sanitize_input(v, 'name', 100)
+        return v
+    
+    @validator('brand') 
+    def validate_brand_update(cls, v):
+        if v is not None:
+            return _validate_and_sanitize_input(v, 'name', 100)
+        return v
+    
+    @validator('tags')
+    def validate_tags_update(cls, v):
+        if v is not None:
+            # Validar y limpiar tags (separados por comas)
+            tags = [tag.strip() for tag in v.split(',') if tag.strip()]
+            if len(tags) > 10:  # Límite de 10 tags
+                raise ValueError('Máximo 10 tags permitidos')
+            return ', '.join(tags)
+        return v
 
 class Product(ProductBase):
     id: int
@@ -128,12 +204,43 @@ class ProductList(BaseModel):
     limit: int
     has_next: bool
 
+# Esquemas para filtros y categorización
+class ProductFilters(BaseModel):
+    """Esquema para filtros avanzados de productos"""
+    search: Optional[str] = Field(None, max_length=200, description="Búsqueda por nombre, SKU o descripción")
+    category: Optional[ProductCategory] = Field(None, description="Filtrar por categoría")
+    brand: Optional[str] = Field(None, max_length=100, description="Filtrar por marca")
+    min_price: Optional[float] = Field(None, ge=0, description="Precio mínimo")
+    max_price: Optional[float] = Field(None, ge=0, description="Precio máximo")
+    in_stock: Optional[bool] = Field(None, description="Solo productos con stock")
+    tags: Optional[str] = Field(None, max_length=200, description="Filtrar por tags")
+
+class CategoryInfo(BaseModel):
+    """Información de una categoría"""
+    category: ProductCategory
+    name: str
+    count: int
+    description: str
+
+class BrandInfo(BaseModel):
+    """Información de una marca"""
+    brand: str
+    count: int
+    categories: List[str]
+
+class ProductFiltersResponse(BaseModel):
+    """Respuesta con filtros disponibles"""
+    categories: List[CategoryInfo]
+    brands: List[BrandInfo]
+    price_range: dict
+    total_products: int
+
 # Esquemas para Distributor
 class DistributorBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=200, description="Nombre del distribuidor")
     contact_person: Optional[str] = Field(None, max_length=100, description="Persona de contacto")
     phone_number: Optional[str] = Field(None, max_length=20, description="Número de teléfono")
-    access_code: str = Field(..., min_length=4, max_length=20, description="Código de acceso")
+    access_code: str = Field(..., min_length=4, max_length=200, description="Código de acceso")
     
     @validator('name')
     def validate_name_with_input_validator(cls, v):
@@ -149,14 +256,61 @@ class DistributorBase(BaseModel):
     @validator('access_code')
     def validate_access_code_with_input_validator(cls, v):
         # Asumiendo que 'access_code' es un field_type válido en InputValidator
-        return _validate_and_sanitize_input(v, 'access_code', 20)
+        return _validate_and_sanitize_input(v, 'access_code', 200)
 
-class DistributorCreate(DistributorBase):
-    access_code: str # Redefinir para aplicar el validador de hashing
-
+class DistributorCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200, description="Nombre del distribuidor")
+    contact_person: Optional[str] = Field(None, max_length=100, description="Persona de contacto")
+    phone_number: Optional[str] = Field(None, max_length=20, description="Número de teléfono")
+    access_code: Optional[str] = Field(None, min_length=7, max_length=7, description="Código de acceso (opcional, se genera automáticamente)")
+    
+    @validator('name')
+    def validate_name_with_input_validator(cls, v):
+        return _validate_and_sanitize_input(v, 'name', 200)
+    
+    @validator('phone_number')
+    def validate_phone_number_with_input_validator(cls, v):
+        if v:
+            return _validate_and_sanitize_input(v, 'phone', 20)
+        return v
+    
     @validator('access_code')
-    def hash_access_code(cls, v):
-        return auth_security.hash_password(v)
+    def validate_access_code_with_input_validator(cls, v):
+        if v:
+            # Validar formato BGAxxxx si se proporciona
+            import re
+            if not re.match(r'^BGA\d{4}$', v):
+                raise ValueError('El código de acceso debe tener el formato BGA + 4 dígitos (ej: BGA0001)')
+            return _validate_and_sanitize_input(v, 'access_code', 7)
+        return v
+
+class DistributorUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200, description="Nombre del distribuidor")
+    contact_person: Optional[str] = Field(None, max_length=100, description="Persona de contacto")
+    phone_number: Optional[str] = Field(None, max_length=20, description="Número de teléfono")
+    access_code: Optional[str] = Field(None, min_length=7, max_length=7, description="Código de acceso")
+    
+    @validator('name')
+    def validate_name_with_input_validator(cls, v):
+        if v:
+            return _validate_and_sanitize_input(v, 'name', 200)
+        return v
+    
+    @validator('phone_number')
+    def validate_phone_number_with_input_validator(cls, v):
+        if v:
+            return _validate_and_sanitize_input(v, 'phone', 20)
+        return v
+    
+    @validator('access_code')
+    def validate_access_code_with_input_validator(cls, v):
+        if v:
+            # Validar formato BGAxxxx si se proporciona
+            import re
+            if not re.match(r'^BGA\d{4}$', v):
+                raise ValueError('El código de acceso debe tener el formato BGA + 4 dígitos (ej: BGA0001)')
+            return _validate_and_sanitize_input(v, 'access_code', 7)
+        return v
 
 class Distributor(DistributorBase):
     id: int
@@ -253,8 +407,13 @@ class ConsignmentLoanBase(BaseModel):
     return_due_date: date
     status: LoanStatus
 
-class ConsignmentLoanCreate(ConsignmentLoanBase):
-    pass
+class ConsignmentLoanCreate(BaseModel):
+    distributor_id: int
+    product_id: int
+    quantity_loaned: int
+    loan_date: date
+    return_due_date: date
+    status: Optional[LoanStatus] = LoanStatus.en_prestamo
 
 class ConsignmentLoan(ConsignmentLoanBase):
     id: int
@@ -277,3 +436,95 @@ class ConsignmentReport(ConsignmentReportBase):
 
     class Config:
         from_attributes = True
+
+# Esquemas para Scanner y Movimientos de Inventario
+class ScanSessionCreate(BaseModel):
+    session_type: str = Field(..., description="Tipo de sesión: inventory, consignment, sales, incoming")
+    location_type: Optional[LocationType] = Field(None, description="Tipo de ubicación")
+    location_id: Optional[int] = Field(None, description="ID de ubicación específica")
+    reference_type: Optional[str] = Field(None, description="Tipo de referencia")
+    reference_id: Optional[int] = Field(None, description="ID de referencia")
+    device_info: Optional[str] = Field(None, max_length=200, description="Información del dispositivo")
+    notes: Optional[str] = Field(None, max_length=500, description="Notas de la sesión")
+
+class ScanSession(BaseModel):
+    id: int
+    session_type: str
+    user_id: int
+    started_at: datetime
+    ended_at: Optional[datetime]
+    status: str
+    total_scans: int
+    successful_scans: int
+    failed_scans: int
+    location_type: Optional[LocationType]
+    location_id: Optional[int]
+    reference_type: Optional[str]
+    reference_id: Optional[int]
+    device_info: Optional[str]
+    notes: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class InventoryMovementCreate(BaseModel):
+    barcode_scanned: str = Field(..., description="Código de barras escaneado")
+    movement_type: str = Field(..., description="Tipo de movimiento: in, out, transfer")
+    from_location_type: Optional[LocationType] = Field(None, description="Tipo de ubicación origen")
+    from_location_id: Optional[int] = Field(None, description="ID de ubicación origen")
+    to_location_type: LocationType = Field(..., description="Tipo de ubicación destino")
+    to_location_id: Optional[int] = Field(None, description="ID de ubicación destino")
+    quantity: int = Field(1, gt=0, description="Cantidad a mover")
+    reference_type: Optional[str] = Field(None, description="Tipo de referencia")
+    reference_id: Optional[int] = Field(None, description="ID de referencia")
+    notes: Optional[str] = Field(None, max_length=500, description="Notas del movimiento")
+    device_info: Optional[str] = Field(None, max_length=200, description="Información del dispositivo")
+
+class InventoryMovement(BaseModel):
+    id: int
+    product_id: int
+    barcode_scanned: str
+    movement_type: str
+    from_location_type: Optional[LocationType]
+    from_location_id: Optional[int]
+    to_location_type: LocationType
+    to_location_id: Optional[int]
+    quantity: int
+    user_id: int
+    timestamp: datetime
+    reference_type: Optional[str]
+    reference_id: Optional[int]
+    notes: Optional[str]
+    device_info: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+# Esquemas para operaciones de scanner
+class ScanRequest(BaseModel):
+    barcode: str = Field(..., description="Código de barras escaneado")
+    session_id: Optional[int] = Field(None, description="ID de sesión de escaneo")
+    quantity: int = Field(1, gt=0, description="Cantidad por defecto")
+    device_info: Optional[str] = Field(None, max_length=200, description="Información del dispositivo")
+
+class ScanResponse(BaseModel):
+    success: bool
+    message: str
+    product: Optional[Product] = None
+    movement: Optional[InventoryMovement] = None
+    session: Optional[ScanSession] = None
+
+class BulkScanRequest(BaseModel):
+    barcodes: List[str] = Field(..., description="Lista de códigos de barras")
+    session_id: Optional[int] = Field(None, description="ID de sesión de escaneo")
+    movement_type: str = Field(..., description="Tipo de movimiento")
+    location_type: LocationType = Field(..., description="Tipo de ubicación")
+    location_id: Optional[int] = Field(None, description="ID de ubicación")
+    device_info: Optional[str] = Field(None, max_length=200, description="Información del dispositivo")
+
+class BulkScanResponse(BaseModel):
+    total_scanned: int
+    successful_scans: int
+    failed_scans: int
+    results: List[ScanResponse]
+    session: Optional[ScanSession] = None
